@@ -1,0 +1,9 @@
+TODO: In order of precedence.
+	Create a function that sets the datum dptr and dsize at the same time.
+		(Usability plus)
+
+	Refactor functions to include error codes (store(), add a close(), etc)
+	Refactor to use an mmap() backend versus the current write()
+
+	Refactor to make it a dynamic array versus the current hash table
+	Refactor global numbers to be context dependent (e.g. make a DB object)

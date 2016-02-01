@@ -17,7 +17,6 @@
 #include <stdio.h>              /* I/O lib         ISOC  */
 #include <unistd.h>             /* UNIX std stf    POSIX */
 #include <errno.h>              /* error stf       POSIX */
-#include <math.h>		/* log()		 */
 #include "dbm.h"                /* ndbm header     BSD   */
 
 #define NUMELE 1000000

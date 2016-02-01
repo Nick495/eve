@@ -12,20 +12,20 @@ void setbit();
 void clrbuf();
 void chkblk();
 
-int dbminit(char *file)
+int dbminit(const char *path)
 {
 	struct stat statb;
 
-	strcpy(pagbuf, file);
+	strcpy(pagbuf, path);
 	strcat(pagbuf, ".pag");
 	pagf = open(pagbuf, O_RDWR|O_CREAT, 0644);
 
-	strcpy(pagbuf, file);
+	strcpy(pagbuf, path);
 	strcat(pagbuf, ".dir");
 	dirf = open(pagbuf, O_RDWR|O_CREAT, 0644);
 
 	if (pagf < 0 || dirf < 0) {
-		printf("cannot open database %s\n", file);
+		printf("cannot open database %s\n", path);
 		return(-1);
 	}
 
@@ -36,15 +36,15 @@ int dbminit(char *file)
 
 long forder(datum key)
 {
-	long hash;
+	long hash = calchash(key);
 
-	hash = calchash(key);
 	for (hmask = 0;;hmask = (hmask << 1) + 1) {
 		blkno = hash & hmask;
 		bitno = blkno + hmask;
 		if (getbit() == 0)
 			break;
 	}
+
 	return(blkno);
 }
 
@@ -362,13 +362,11 @@ long hashinc(long hash)
 
 long calchash(datum item)
 {
-	register i, j, f;
-	long hashl;
-	int hashi;
+	register int i, j, f;
+	long hashl = 0;
+	int hashi = 0;
 
-	hashl = 0;
-	hashi = 0;
-	for(i = 0;i < item.dsize; i++) {
+	for(i = 0;i < item.dsize;i++) {
 		f = item.dptr[i];
 		for(j = 0;j < BYTESIZ;j += 4) {
 			hashi += hitab[f&017];
