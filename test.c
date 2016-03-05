@@ -10,6 +10,10 @@
 #include <string.h>	/* memcpy() */
 #include <fcntl.h>	/* open() */
 #include <unistd.h>	/* close() */
+#include <assert.h>	/* assert() */
+
+#include "token.h"
+#include "eve_parser.h"
 
 #define FCNT 16
 
@@ -18,6 +22,18 @@ void create_path(char *buf, const char *dp, const char *name, const char *ext)
 	memcpy(buf, dp, strlen(dp));
 	memcpy(buf + strlen(dp), name, strlen(name));
 	memcpy(buf + strlen(dp) + strlen(name), ext, strlen(ext) + 1);
+}
+
+int write_tokens(int *fds, token *tokens, const size_t tokenCount)
+{
+	size_t i;
+	size_t len;
+	for (i = 0; i < tokenCount; ++i) {
+		len = write(fds[i], tokens[i].ptr, tokens[i].len);
+		assert(len == tokens[i].len);
+	}
+
+	return 0;
 }
 
 int main(void)
@@ -30,14 +46,11 @@ int main(void)
 		"volent", "reportedtime", "duration", "range", "bid", "deleted"
 	};
 	char buf[256]; /* Arbitrary length, fix later. */
-	int fds[FCNT];
-
 	uint32_t year, month, day;
+	int fds[FCNT];
+	token tokens[FCNT];
 	Parser parser;
-	struct rawRecord record;
-	int err;
-
-	size_t i = 0;
+	ssize_t i = 0;
 
 
 	/* Open necessary files. */
@@ -53,14 +66,20 @@ int main(void)
 	}
 
 	/* Read from stdin and write to files. */
-	while ((err = scanf("%u-%u-%u\n", &year, &month, &day) == 3)) {
-		parser = parser_factory(ejaday(year, month, day));
+	while ((i = scanf("%u-%u-%u\n", &year, &month, &day) == 3)) {
 
-		while(parser(&record) == 0) {
+		/* Parser depends upon the input's creation date. */
+		parser = parser_factory(year, month, day);
+
+		/* Parse the whole file. */
+		while ((i = parser(tokens, FCNT)) >= 0) {
+			if (!i) {
+				write_tokens(fds, tokens, FCNT);
+			}
 		}
+
+		printf("Finished file: %u-%u-%u\n", year, month, day);
 	}
-	/* Write to files. */
-	Parser p
 
 	return EXIT_SUCCESS;
 
