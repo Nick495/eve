@@ -1,0 +1,18 @@
+Note: All dates are in this file are in the format D-M-Y.
+Note that not all timestamps report decimal seconds.
+
+File Format 1: (Beginning format)
+	Buy order ranges incorrect.
+	Timestamps in PST.
+
+File Format 2: (Begins usage at 1-1-2007)
+	Buy order ranges correct.
+
+File Format 3: (Begins usage at 1-10-2007)
+	Times are in UTC.
+
+File Format 4: (Begins usage at 18-7-2010)
+	Duration is reported as "X(X) Day(s), H(H):MM:SS"
+
+File Format 5: (Begins usage at 13-2-2011).
+	Fields are quoted.
