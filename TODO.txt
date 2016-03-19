@@ -2,3 +2,5 @@ TODO:
 	Investigate streaming compression options for the file writeout.
 	(lz4 seemed promising, but it seems to require an integer for each
 	compressed block, which isn't really a savings for most of my data.)
+
+	Investigate ranges of 1,2,3,4. (Valid or not?)

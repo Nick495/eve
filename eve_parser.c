@@ -95,7 +95,7 @@ static int8_t convert_range_byte(int range)
 	case 40:
 		return 40;
 	case 32767:
-	case 65335:
+	case 65535:
 		return 127;
 	default:
 		return -2;
@@ -334,7 +334,7 @@ int parse_v5(const char *str, token *tokens, const size_t tokenCount)
 	unsigned int rtimeHour, rtimeMin, rtimeSec;
 	int range;
 	uint8_t priceTenths, duration;
-	int8_t bid;
+	int8_t bid, rangeByte;
 
 	/* Precondition */
 	assert(tokenCount > 14);
@@ -352,7 +352,7 @@ int parse_v5(const char *str, token *tokens, const size_t tokenCount)
 	}
 
 	bid = bid - '0';
-	range = convert_range_byte(range);
+	rangeByte = convert_range_byte(range);
 	price = price * 100 + priceTenths;
 	issued = ejday(issuedYear, issuedMonth, issuedDay)
 		+ SEC_PER_HOUR * issuedHour + SEC_PER_MIN * issuedMin
@@ -361,7 +361,7 @@ int parse_v5(const char *str, token *tokens, const size_t tokenCount)
 		+ SEC_PER_HOUR * rtimeHour + SEC_PER_MIN * rtimeMin
 		+ rtimeSec;
 
-	if (range == -2 || bid > 1 || (issued > rtime)) {
+	if (rangeByte == -2 || bid > 1 || (issued > rtime)) {
 		return 1; /* Throw out bogus values. */
 	}
 

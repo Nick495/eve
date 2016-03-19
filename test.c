@@ -69,10 +69,12 @@ int main(void)
 	};
 	char buf[BUFSIZE]; /* Arbitrary length, fix later. */
 	uint32_t year, month, day;
+	uint32_t oyear = 0, omonth = 0, oday = 0;
 	FILE* fs[FCNT];
 	token tokens[FCNT];
 	Parser parser;
 	ssize_t i = 0;
+	size_t linecount;
 
 	/* Open necessary files. */
 	for (i = 0; i < FCNT; ++i) {
@@ -100,23 +102,46 @@ int main(void)
 	tokens[15].len = sizeof(uint8_t);
 
 	/* Read from stdin and write to files. */
-	while ((i = scanf("%u-%u-%u\n", &year, &month, &day) == 3)) {
+	while (fgets(buf, BUFSIZE, stdin) != NULL) {
+		if (sscanf(buf, "%u-%u-%u\n", &year, &month, &day) == 3) {
+			parser = parser_factory(year, month, day);
 
-		/* Parser depends upon the input's creation date. */
-		parser = parser_factory(year, month, day);
+			/* Skip header line. */
+			fgets(buf, BUFSIZE, stdin);
 
-		/* Parse the whole file. */
-		while (fgets(buf, BUFSIZE, stdin) != NULL) {
-			if ((i = parser(buf, tokens, FCNT)) == 0) {
-				write_tokens(fs, tokens, FCNT);
+			if (oyear != 0 && omonth != 0 && oday != 0) {
+				/* Print the last file, which we finished. */
+				printf("Finished file: %u-%u-%u\n", oyear,
+				    omonth, oday);
 			}
+
+			/* Update the last file attributes */
+			oyear = year;
+			omonth = month;
+			oday = day;
+			linecount = 0;
+			continue;
 		}
 
-		if (!feof(stdin) && ferror(stdin)) {
-			printf("Error reading: %u-%u-%u\n", year, month, day);
-		} else {
-			printf("Finished file: %u-%u-%u\n", year, month, day);
+		i = parser(buf, tokens, FCNT);
+		switch(i) {
+		case 0:
+			write_tokens(fs, tokens, FCNT);
+			break;
+		case 1:
+			printf("Bad time at line %zu\n", linecount);
+			break;
+		default:
+			printf("Bad line at line: %zu, %zu\n%s\n",
+			    i, linecount, buf);
 		}
+		linecount++;
+	}
+
+	if (ferror(stdin)) {
+		printf("Error reading: %u-%u-%u\n", year, month, day);
+	} else {
+		printf("Finished file: %u-%u-%u\n", year, month, day);
 	}
 
 	for (i = 0; i < FCNT; ++i) {
