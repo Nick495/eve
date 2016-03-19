@@ -4,3 +4,6 @@ TODO:
 	compressed block, which isn't really a savings for most of my data.)
 
 	Investigate ranges of 1,2,3,4. (Valid or not?)
+
+	Test the new parser functions in eve_parser (should be _much_ faster
+	than scanf, and internally they're less code which is cleaner too).

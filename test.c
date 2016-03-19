@@ -49,13 +49,59 @@ static int write_tokens(FILE **fs, token *tokens, const size_t tokenCount)
 	size_t i;
 	for (i = 0; i < tokenCount; ++i) {
 		if (write_token(fs[i], &(tokens[i]))) {
+#if 0
 			printf("DEBUG: %zu, %zu\n", i, tokens[i].len);
 			perror("fwrite:");
+#endif
 			return 1;
 		}
 	}
 
 	return 0;
+}
+
+static void cmp_tokens(token *a, token *b, const size_t tokenCount,
+    const char **names, const char *str)
+{
+	size_t i = 0;
+	int flag = 0;
+
+	for (i = 0; i < tokenCount; ++i) {
+		if (memcmp(a[i].ptr, b[i].ptr, a[i].len)) {
+			flag = 1;
+			printf("DEBUG: Failed to match field %s | ",
+			    names[i]);
+			switch(i) {
+			case 0: /* orderid */
+			case 6: /* price: */
+			case 13: /* reportedby */
+				printf("%llu , %llu\n",
+				    *(uint64_t *)a[i].ptr,
+				    *(uint64_t *)b[i].ptr);
+				break;
+			case 5: /* bid */
+			case 12: /* range */
+				printf("%d , %d\n",
+				    *(int8_t *)a[i].ptr,
+				    *(int8_t *)b[i].ptr);
+				break;
+			case 11: /* duration */
+				printf("%d , %d\n",
+				    *(uint8_t *)a[i].ptr,
+				    *(uint8_t *)b[i].ptr);
+				break;
+			default:
+				printf("%d , %d\n",
+				    *(uint32_t *)a[i].ptr,
+				    *(uint32_t *)b[i].ptr);
+				break;
+			}
+		}
+	}
+
+	if (flag) {
+		printf("%s\n", str);
+	}
 }
 
 int main(void)
@@ -149,6 +195,7 @@ int main(void)
 	}
 	return EXIT_SUCCESS;
 
+fail_init_testToken:
 fail_init_token:
 fail_open:
 	for (; i > 0; --i) {

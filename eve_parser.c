@@ -6,44 +6,6 @@
 #define SEC_PER_HOUR 3600
 #define SEC_PER_MIN 60
 
-static int set_tokens(token *tokens, uint64_t orderid, uint32_t regionid,
-    uint32_t systemid, uint32_t stationid, uint32_t typeid, int8_t bid,
-    uint64_t price, uint32_t volmin, uint32_t volrem, uint32_t volent,
-    uint32_t issued, uint8_t duration, int8_t range, uint64_t reportedby,
-    uint32_t rtime)
-{
-	/* Input Order:
-	 * orderid, regionid, systemid, stationid, typeid, bid, price, volmin,
-	 * volrem, volent, issued, duration, range, reportedby, rtime
-	*/
-
-	/* It's "abstraction violating" but I'm not bothering to check for
-	 * memory allocation in set_token because I know that small datasets
-	 * < 9 bytes are copied to internal buffers and therefore there's no
-	 * memory allocation occuring to fail anyway.
-	*/
-
-	unsigned int i = 0;
-
-	set_token(&tokens[i++],	&orderid,	sizeof(orderid));
-	set_token(&tokens[i++],	&regionid,	sizeof(regionid));
-	set_token(&tokens[i++], &systemid,	sizeof(systemid));
-	set_token(&tokens[i++], &stationid,	sizeof(stationid));
-	set_token(&tokens[i++], &typeid,	sizeof(typeid));
-	set_token(&tokens[i++], &bid,		sizeof(bid));
-	set_token(&tokens[i++], &price,		sizeof(price));
-	set_token(&tokens[i++], &volmin,	sizeof(volmin));
-	set_token(&tokens[i++], &volrem,	sizeof(volrem));
-	set_token(&tokens[i++], &volent,	sizeof(volent));
-	set_token(&tokens[i++], &issued,	sizeof(issued));
-	set_token(&tokens[i++], &duration,	sizeof(duration));
-	set_token(&tokens[i++], &range,		sizeof(range));
-	set_token(&tokens[i++], &reportedby,	sizeof(reportedby));
-	set_token(&tokens[i++], &rtime,		sizeof(rtime));
-
-	return 0;
-}
-
 /* Fast converter between years and Epoch normalized Julian Days, in seconds */
 static uint32_t ejday(const uint32_t yr, const uint32_t mn, const uint32_t dy)
 {
@@ -52,7 +14,7 @@ static uint32_t ejday(const uint32_t yr, const uint32_t mn, const uint32_t dy)
 }
 
 /* Converts a pacific timestamp to UTC. Faster than mktime() by a lot. */
-static uint32_t convert_pt_utc(uint32_t pacificTime)
+static uint32_t pt_to_utc(uint32_t pacificTime)
 {
 	/* Attempt to switch PT to UTC (including daylight savings time. :\) */
 	/* YYYY-MM-DD-HH in PT (These are the date-times where daylight savings
@@ -79,7 +41,7 @@ static uint32_t convert_pt_utc(uint32_t pacificTime)
 }
 
 /* Returns -2 on failure. */
-static int8_t convert_range_byte(int range)
+static int8_t range_to_byte(int range)
 {
 	switch(range) {
 	case -1:
@@ -102,273 +64,206 @@ static int8_t convert_range_byte(int range)
 	}
 }
 
+static uint64_t parse_num(const char **s)
+{
+	const char *str = *s;
+	uint64_t val = 0;
+
+	while (!isdigit(*str) && *str != '\0')
+		str++; /* Skip leading non-digits */
+
+	while (isdigit(*str))
+		val = val * 10 + *str++ - '0'; /* Assume base 10 */
+
+	*s = str;
+
+	return val;
+}
+
+static int8_t parse_range(const char **s)
+{
+	const char *str = *s;
+	int8_t val = 0;
+
+	while (!isdigit(*str) && *str != '\0' && *str != '-')
+		str++; /* Skip leading non-digits */
+
+	if (*str == '-') {
+		return -1;
+	}
+
+	*s = str;
+	return range_to_byte(parse_num(s));
+}
+
 /*
  * Return 0 on successful parsing, -1 on malformed input and -2 on alloc error.
  * 1 is returned for improper data.
  *
 */
+/* It's "abstraction violating" but I'm not bothering to check for
+ * memory allocation in set_token because I know that small datasets
+ * < 9 bytes are copied to internal buffers and therefore there's no
+ * memory allocation occuring to fail anyway.
+*/
+/* Input Order:
+ * orderid, regionid, systemid, stationid, typeid, bid, price, volmin,
+ * volrem, volent, issued, duration, range, reportedby, rtime
+*/
+void parser(const char *str, token *tokens, const size_t tokenCount)
+{
+	uint64_t a = 0;
+	int b,c,d;
+
+	uint32_t u32 = 0;
+	int8_t i8 = 0;
+	uint8_t u8 = 0;
+
+	/* Preconditions */
+	assert(tokenCount > 14);
+
+	a = parse_num(&str);
+	set_token(&tokens[0], &a, sizeof(uint64_t));	/* orderid */
+	u32 = (uint32_t) parse_num(&str);
+	set_token(&tokens[1], &u32, sizeof(uint32_t));	/* regionid */
+	u32 = (uint32_t) parse_num(&str);
+	set_token(&tokens[2], &u32, sizeof(uint32_t));	/* systemid */
+	u32 = (uint32_t) parse_num(&str);
+	set_token(&tokens[3], &u32, sizeof(uint32_t));	/* stationid */
+	u32 = (uint32_t) parse_num(&str);
+	set_token(&tokens[4], &u32, sizeof(uint32_t));	/* typeid */
+	i8 = (int8_t) (parse_num(&str));
+	set_token(&tokens[5], &i8, sizeof(int8_t));	/* bid */
+	a = parse_num(&str) * 100;
+	if (*str == '.') {
+		//printf("DEBUG: GOT HERE!\n");
+		str++;
+		a += (*str++ - '0') * 10;
+		if (isdigit(*str)) {
+			a += (*str++ - '0');
+		}
+	}
+	set_token(&tokens[6], &a, sizeof(uint64_t));	/* price*/
+	u32 = (uint32_t) parse_num(&str);
+	set_token(&tokens[7], &u32, sizeof(uint32_t));	/* volmin */
+	u32 = (uint32_t) parse_num(&str);
+	set_token(&tokens[8], &u32, sizeof(uint32_t));	/* volrem */
+	u32 = (uint32_t) parse_num(&str);
+	set_token(&tokens[9], &u32, sizeof(uint32_t));	/* volent */
+
+	b = parse_num(&str);				/* issuedYear */
+	c = parse_num(&str);				/* issuedMonth */
+	d = parse_num(&str);				/* issuedDay */
+	u32 = ejday(b, c, d);
+
+	b = parse_num(&str);				/* issuedHour */
+	c = parse_num(&str);				/* issuedMin */
+	d = parse_num(&str);				/* issuedSec */
+	u32 += b * SEC_PER_HOUR + c * SEC_PER_MIN + d;
+	if (isdigit(*str) && *str - '0' > 5) {
+		u32++; /* Round time to the nearest second. */
+	}
+	set_token(&tokens[10], &u32, sizeof(uint32_t));	/* issued */
+
+	u32 = parse_num(&str);				/* duration: XX Days*/
+	b = parse_num(&str);				/* Hour */
+	b = parse_num(&str);				/* Min */
+	b = parse_num(&str);				/* Sec  */
+	set_token(&tokens[11], &u32, sizeof(uint32_t));	/* Duration */
+
+	i8 = parse_range(&str);	/* Special since range has negatives. */
+	set_token(&tokens[12], &i8, sizeof(int8_t));	/* range */
+
+	a = parse_num(&str);
+	set_token(&tokens[13], &a, sizeof(uint64_t));	/* reportedby */
+
+	b = parse_num(&str);				/* reportedYear */
+	c = parse_num(&str);				/* reportedMonth */
+	d = parse_num(&str);				/* reportedDay */
+	u32 = ejday(b, c, d);
+
+	b = parse_num(&str);				/* reportedHour */
+	c = parse_num(&str);				/* reportedMin */
+	d = parse_num(&str);				/* reportedSec */
+	u32 += b * SEC_PER_HOUR + c * SEC_PER_MIN + d;
+	if (isdigit(*str) && *str - '0' > 5) {
+		u32++; /* Round time to the nearest second. */
+	}
+	set_token(&tokens[14], &u32, sizeof(uint32_t));	/* reportedtime */
+}
+
 /*
  * Historical caveats: Buy order ranges incorrect, and time in Pacific.
  * There's no specifier in C89 for int8_t, so we get some compiler warnings
  * with %u. In C99 we'd use %hhu.
  *
 */
-int parse_v1(const char *str, token *tokens, const size_t tokenCount)
+int parse_pt_bo(const char *str, token *tokens, const size_t tokenCount)
 {
-	uint64_t orderid, price, reportedby;
-	uint32_t issued, rtime;
-	uint32_t regionid, systemid, stationid, typeid, volmin, volrem, volent;
-	unsigned int issuedYear, issuedMonth, issuedDay, issuedHour;
-	unsigned int issuedMin, issuedSec, rtimeYear, rtimeMonth, rtimeDay;
-	unsigned int rtimeHour, rtimeMin, rtimeSec;
-	int range;
-	uint8_t priceTenths, issuedSecTenth, rtimeSecTenth, duration;
-	int8_t bid;
-
-	/* Precondition */
+	/* Preconditions */
 	assert(tokenCount > 14);
 
-	if (sscanf(str, "%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , "
-	    "%u , %u-%u-%u %u:%u:%u.%c%*[^,], %u:%*u:%*u:%*u.%*c%*[^,], %u , "
-	    "%llu , %u-%u-%u %u:%u:%u.%c%*[^\n]\n",
-	    &orderid, &regionid, &systemid, &stationid, &typeid, &bid,
-	    &price, &priceTenths, &volmin, &volrem, &volent, &issuedYear,
-	    &issuedMonth, &issuedDay, &issuedHour, &issuedMin, &issuedSec,
-	    &issuedSecTenth, &duration, &range, &reportedby, &rtimeYear,
-	    &rtimeMonth, &rtimeDay, &rtimeHour, &rtimeMin, &rtimeSec,
-	    &rtimeSecTenth) != 28) {
-		return -1; /* Malformed input. */
+	parser(str, tokens, tokenCount);
+	/* Buy order ranges are incorrect for this period. */
+	/* If it's a buy order (bid) then estimate the range as the smallest.*/
+	if (*(uint8_t *)tokens[5].ptr > '1') {
+		return 1;
+	} else if (*(uint8_t *)tokens[5].ptr == '1') {
+		*(int8_t *)tokens[12].ptr = range_to_byte(-1);
 	}
 
-	bid = bid - '0';
-	price = price * 100 + priceTenths;
-	issued = convert_pt_utc(ejday(issuedYear, issuedMonth, issuedDay)
-		+ SEC_PER_HOUR * issuedHour + SEC_PER_MIN * issuedMin
-		+ issuedSec + ((issuedSecTenth - '0' > 5) ? 1 : 0));
-	/* Buy order ranges incorrect for this portion of time, so
-	 * conservatively assume that their ranges are station (smallest).
+	/* If we have a bad range, or an issued time earlier than reported
+	 * return bad value.
 	*/
-	if (bid) {
-		range = -1;
-	} else {
-		range = convert_range_byte(range);
-	}
-	rtime = convert_pt_utc(ejday(rtimeYear, rtimeMonth, rtimeDay)
-		+ SEC_PER_HOUR * rtimeHour + SEC_PER_MIN * rtimeMin
-		+ rtimeSec + ((rtimeSecTenth - '0' > 5) ? 1 : 0));
-
-	if (range == -2 || bid > 1 || (issued > rtime)) {
-		return 1; /* Throw out bogus values. */
+	if ((*(int8_t *)tokens[12].ptr == -2) ||
+	    (*(uint32_t *)tokens[10].ptr > *(uint32_t *)tokens[14].ptr)) {
+		return 1;
 	}
 
-	if (set_tokens(tokens, orderid, regionid, systemid, stationid, typeid,
-		    bid, price, volmin, volrem, volent, issued, duration,
-		    range, reportedby, rtime)) {
-		return -2;
-	}
+	/* Convert pacific time stamps to UTC. */
+	*(uint32_t *)tokens[10].ptr = pt_to_utc(*(uint32_t*)tokens[10].ptr);
+	*(uint32_t *)tokens[14].ptr = pt_to_utc(*(uint32_t*)tokens[14].ptr);
 
 	return 0;
 }
 
 /* Historical caveat: Time in Pacific. (Buy order ranges now correct) */
-int parse_v2(const char *str, token *tokens, const size_t tokenCount)
+int parse_pt(const char *str, token *tokens, const size_t tokenCount)
 {
-	uint64_t orderid, price, reportedby;
-	uint32_t issued, rtime;
-	uint32_t regionid, systemid, stationid, typeid, volmin, volrem, volent;
-	unsigned int issuedYear, issuedMonth, issuedDay, issuedHour;
-	unsigned int issuedMin, issuedSec, rtimeYear, rtimeMonth, rtimeDay;
-	unsigned int rtimeHour, rtimeMin, rtimeSec;
-	int range;
-	uint8_t priceTenths, issuedSecTenth, rtimeSecTenth, duration;
-	int8_t bid;
-
-	/* Precondition */
+	/* Preconditions */
 	assert(tokenCount > 14);
 
-	if (sscanf(str, "%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , "
-	    "%u , %u-%u-%u %u:%u:%u.%c%*[^,], %u:%*u:%*u:%*u.%*c%*[^,], %u , "
-	    "%llu , %u-%u-%u %u:%u:%u.%c%*[^\n]\n",
-	    &orderid, &regionid, &systemid, &stationid, &typeid, &bid,
-	    &price, &priceTenths, &volmin, &volrem, &volent, &issuedYear,
-	    &issuedMonth, &issuedDay, &issuedHour, &issuedMin, &issuedSec,
-	    &issuedSecTenth, &duration, &range, &reportedby, &rtimeYear,
-	    &rtimeMonth, &rtimeDay, &rtimeHour, &rtimeMin, &rtimeSec,
-	    &rtimeSecTenth) != 28) {
-		return -1; /* Malformed input. */
+	parser(str, tokens, tokenCount);
+
+	/* If we have a bad range, or an issued time earlier than reported
+	 * return bad value.
+	*/
+	if ((*(int8_t *)tokens[12].ptr == -2) ||
+	    (*(uint32_t *)tokens[10].ptr > *(uint32_t *)tokens[14].ptr)) {
+		return 1;
 	}
 
-	bid = bid - '0';
-	range = convert_range_byte(range);
-	price = price * 100 + priceTenths;
-	issued = convert_pt_utc(ejday(issuedYear, issuedMonth, issuedDay)
-		+ SEC_PER_HOUR * issuedHour + SEC_PER_MIN * issuedMin
-		+ issuedSec + ((issuedSecTenth - '0' > 5) ? 1 : 0));
-	rtime = convert_pt_utc(ejday(rtimeYear, rtimeMonth, rtimeDay)
-		+ SEC_PER_HOUR * rtimeHour + SEC_PER_MIN * rtimeMin
-		+ rtimeSec + ((rtimeSecTenth - '0' > 5) ? 1 : 0));
-
-	if (range == -2 || bid > 1 || (issued > rtime)) {
-		return 1; /* Throw out bogus values. */
-	}
-
-	if (set_tokens(tokens, orderid, regionid, systemid, stationid, typeid,
-		    bid, price, volmin, volrem, volent, issued, duration,
-		    range, reportedby, rtime)) {
-		return 2;
-	}
+	/* Convert pacific time stamps to UTC. */
+	*(uint32_t *)tokens[10].ptr = pt_to_utc(*(uint32_t*)tokens[10].ptr);
+	*(uint32_t *)tokens[14].ptr = pt_to_utc(*(uint32_t*)tokens[14].ptr);
 
 	return 0;
 }
 
 /* Historical caveat: Switch to UTC. */
-int parse_v3(const char *str, token *tokens, const size_t tokenCount)
+int parse(const char *str, token *tokens, const size_t tokenCount)
 {
-	uint64_t orderid, price, reportedby;
-	uint32_t issued, rtime;
-	uint32_t regionid, systemid, stationid, typeid, volmin, volrem, volent;
-	unsigned int issuedYear, issuedMonth, issuedDay, issuedHour;
-	unsigned int issuedMin, issuedSec, rtimeYear, rtimeMonth, rtimeDay;
-	unsigned int rtimeHour, rtimeMin, rtimeSec;
-	int range;
-	uint8_t priceTenths, issuedSecTenth, rtimeSecTenth, duration;
-	int8_t bid;
-
-	/* Precondition */
+	/* Preconditions */
 	assert(tokenCount > 14);
 
-	if (sscanf(str, "%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , "
-	    "%u , %u-%u-%u %u:%u:%u.%c%*[^,], %u:%*u:%*u:%*u.%*c%*[^,], %u , "
-	    "%llu , %u-%u-%u %u:%u:%u.%c%*[^\n]\n",
-	    &orderid, &regionid, &systemid, &stationid, &typeid, &bid,
-	    &price, &priceTenths, &volmin, &volrem, &volent, &issuedYear,
-	    &issuedMonth, &issuedDay, &issuedHour, &issuedMin, &issuedSec,
-	    &issuedSecTenth, &duration, &range, &reportedby, &rtimeYear,
-	    &rtimeMonth, &rtimeDay, &rtimeHour, &rtimeMin, &rtimeSec,
-	    &rtimeSecTenth) != 28) {
-		return -1; /* Malformed input. */
-	}
+	parser(str, tokens, tokenCount);
 
-	bid = bid - '0';
-	range = convert_range_byte(range);
-	price = price * 100 + priceTenths;
-	issued = ejday(issuedYear, issuedMonth, issuedDay)
-		+ SEC_PER_HOUR * issuedHour + SEC_PER_MIN * issuedMin
-		+ issuedSec + ((issuedSecTenth - '0' > 5) ? 1 : 0);
-	rtime = ejday(rtimeYear, rtimeMonth, rtimeDay)
-		+ SEC_PER_HOUR * rtimeHour + SEC_PER_MIN * rtimeMin
-		+ rtimeSec + ((rtimeSecTenth - '0' > 5) ? 1 : 0);
-
-	if (range == -2 || bid > 1 || (issued > rtime)) {
-		return 1; /* Throw out bogus values. */
-	}
-
-	if (set_tokens(tokens, orderid, regionid, systemid, stationid, typeid,
-		    bid, price, volmin, volrem, volent, issued, duration,
-		    range, reportedby, rtime)) {
-		return 2;
-	}
-
-	return 0;
-}
-
-/* Historical caveat: Switched duration format */
-int parse_v4(const char *str, token *tokens, const size_t tokenCount)
-{
-	uint64_t orderid, price, reportedby;
-	uint32_t issued, rtime;
-	uint32_t regionid, systemid, stationid, typeid, volmin, volrem, volent;
-	unsigned int issuedYear, issuedMonth, issuedDay, issuedHour;
-	unsigned int issuedMin, issuedSec, rtimeYear, rtimeMonth, rtimeDay;
-	unsigned int rtimeHour, rtimeMin, rtimeSec;
-	int range;
-	uint8_t priceTenths, duration;
-	int8_t bid;
-
-	/* Precondition */
-	assert(tokenCount > 14);
-
-	/* We now only have 26 fields because we no longer have *SecTenths. */
-	if (sscanf(str, "%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , "
-	    "%u , %u-%u-%u %u:%u:%u , %u day %*[^ ] %*u:%*u:%*u , %u , %llu , "
-	    "%u-%u-%u %u:%u:%u %*[^\n]\n", &orderid, &regionid, &systemid,
-	    &stationid, &typeid, &bid, &price, &priceTenths, &volmin,
-	    &volrem, &volent, &issuedYear, &issuedMonth, &issuedDay,
-	    &issuedHour, &issuedMin, &issuedSec, &duration, &range,
-	    &reportedby, &rtimeYear, &rtimeMonth, &rtimeDay, &rtimeHour,
-	    &rtimeMin,&rtimeSec) != 26) {
-		return -1;
-	}
-
-	bid = bid - '0';
-	range = convert_range_byte(range);
-	price = price * 100 + priceTenths;
-	issued = ejday(issuedYear, issuedMonth, issuedDay)
-		+ SEC_PER_HOUR * issuedHour + SEC_PER_MIN * issuedMin
-		+ issuedSec;
-	rtime = ejday(rtimeYear, rtimeMonth, rtimeDay)
-		+ SEC_PER_HOUR * rtimeHour + SEC_PER_MIN * rtimeMin
-		+ rtimeSec;
-
-	if (range == -2 || bid > 1 || (issued > rtime)) {
-		return 1; /* Throw out bogus values. */
-	}
-
-	if (set_tokens(tokens, orderid, regionid, systemid, stationid, typeid,
-		    bid, price, volmin, volrem, volent, issued, duration,
-		    range, reportedby, rtime)) {
-		return 2;
-	}
-
-	return 0;
-}
-
-/* Historical caveat: Switched to quoted fields. */
-int parse_v5(const char *str, token *tokens, const size_t tokenCount)
-{
-	uint64_t orderid, price, reportedby;
-	uint32_t issued, rtime;
-	uint32_t regionid, systemid, stationid, typeid, volmin, volrem, volent;
-	unsigned int issuedYear, issuedMonth, issuedDay, issuedHour;
-	unsigned int issuedMin, issuedSec, rtimeYear, rtimeMonth, rtimeDay;
-	unsigned int rtimeHour, rtimeMin, rtimeSec;
-	int range;
-	uint8_t priceTenths, duration;
-	int8_t bid, rangeByte;
-
-	/* Precondition */
-	assert(tokenCount > 14);
-
-	if (sscanf(str, "\"%llu\",\"%u\",\"%u\",\"%u\",\"%u\",\"%c\","
-		    "\"%llu.%u\",\"%u\",\"%u\",\"%u\",\"%u-%u-%u %u:%u:%u\","
-		    "\"%u day %*[^ ] %*u:%*u:%*u\",\"%u\",\"%llu\","
-		    "\"%u-%u-%u %u:%u:%u %*[^\n]\n", &orderid, &regionid,
-		    &systemid, &stationid, &typeid, &bid, &price, &priceTenths,
-		    &volmin, &volrem, &volent, &issuedYear, &issuedMonth,
-		    &issuedDay, &issuedHour, &issuedMin, &issuedSec, &duration,
-		    &range, &reportedby, &rtimeYear, &rtimeMonth, &rtimeDay,
-		    &rtimeHour, &rtimeMin,&rtimeSec) != 26) {
-		return -1;
-	}
-
-	bid = bid - '0';
-	rangeByte = convert_range_byte(range);
-	price = price * 100 + priceTenths;
-	issued = ejday(issuedYear, issuedMonth, issuedDay)
-		+ SEC_PER_HOUR * issuedHour + SEC_PER_MIN * issuedMin
-		+ issuedSec;
-	rtime = ejday(rtimeYear, rtimeMonth, rtimeDay)
-		+ SEC_PER_HOUR * rtimeHour + SEC_PER_MIN * rtimeMin
-		+ rtimeSec;
-
-	if (rangeByte == -2 || bid > 1 || (issued > rtime)) {
-		return 1; /* Throw out bogus values. */
-	}
-
-	if (set_tokens(tokens, orderid, regionid, systemid, stationid, typeid,
-		    bid, price, volmin, volrem, volent, issued, duration,
-		    range, reportedby, rtime)) {
-		return 2;
+	/* If we have a bad range, or an issued time earlier than reported
+	 * return bad value.
+	*/
+	if ((*(int8_t *)tokens[12].ptr == -2) ||
+	    (*(uint32_t *)tokens[10].ptr > *(uint32_t *)tokens[14].ptr)) {
+		return 1;
 	}
 
 	return 0;
@@ -384,14 +279,10 @@ Parser parser_factory(const uint32_t yr, const uint32_t mn, const uint32_t dy)
 	const uint64_t parsedTime = ejday(yr, mn, dy);
 
 	if (parsedTime < D20070101) {
-		return parse_v1;
+		return parse_pt_bo;
 	} else if (parsedTime < D20071001) {
-		return parse_v2;
-	} else if (parsedTime < D20100718) {
-		return parse_v3;
-	} else if (parsedTime < D20110213) {
-		return parse_v4;
+		return parse_pt;
 	} else {
-		return parse_v5;
+		return parse;
 	}
 }

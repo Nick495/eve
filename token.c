@@ -16,7 +16,7 @@ int init_token(token *t)
 	return 0;
 }
 
-int set_token(token *t, void *ptr, const size_t plen)
+int set_token(token *t, const void *ptr, const size_t plen)
 {
 	/* Preconditions: */
 	assert(plen > 0);
@@ -34,11 +34,11 @@ int set_token(token *t, void *ptr, const size_t plen)
 			return 1;
 		}
 	}
+    
+    assert(t->ptr != NULL);
 
 	memcpy(t->ptr, ptr, plen);
 	t->len = plen;
 
-	/* Postconditions */
-	assert(t->ptr != NULL);
 	return 0;
 }
