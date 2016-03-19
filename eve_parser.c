@@ -6,12 +6,52 @@
 #define SEC_PER_HOUR 3600
 #define SEC_PER_MIN 60
 
+static int set_tokens(token *tokens, uint64_t orderid, uint32_t regionid,
+    uint32_t systemid, uint32_t stationid, uint32_t typeid, int8_t bid,
+    uint64_t price, uint32_t volmin, uint32_t volrem, uint32_t volent,
+    uint32_t issued, uint8_t duration, int8_t range, uint64_t reportedby,
+    uint32_t rtime)
+{
+	/* Input Order:
+	 * orderid, regionid, systemid, stationid, typeid, bid, price, volmin,
+	 * volrem, volent, issued, duration, range, reportedby, rtime
+	*/
+
+	/* It's "abstraction violating" but I'm not bothering to check for
+	 * memory allocation in set_token because I know that small datasets
+	 * < 9 bytes are copied to internal buffers and therefore there's no
+	 * memory allocation occuring to fail anyway.
+	*/
+
+	unsigned int i = 0;
+
+	set_token(&tokens[i++],	&orderid,	sizeof(orderid));
+	set_token(&tokens[i++],	&regionid,	sizeof(regionid));
+	set_token(&tokens[i++], &systemid,	sizeof(systemid));
+	set_token(&tokens[i++], &stationid,	sizeof(stationid));
+	set_token(&tokens[i++], &typeid,	sizeof(typeid));
+	set_token(&tokens[i++], &bid,		sizeof(bid));
+	set_token(&tokens[i++], &price,		sizeof(price));
+	set_token(&tokens[i++], &volmin,	sizeof(volmin));
+	set_token(&tokens[i++], &volrem,	sizeof(volrem));
+	set_token(&tokens[i++], &volent,	sizeof(volent));
+	set_token(&tokens[i++], &issued,	sizeof(issued));
+	set_token(&tokens[i++], &duration,	sizeof(duration));
+	set_token(&tokens[i++], &range,		sizeof(range));
+	set_token(&tokens[i++], &reportedby,	sizeof(reportedby));
+	set_token(&tokens[i++], &rtime,		sizeof(rtime));
+
+	return 0;
+}
+
+/* Fast converter between years and Epoch normalized Julian Days, in seconds */
 static uint32_t ejday(const uint32_t yr, const uint32_t mn, const uint32_t dy)
 {
 	return (yr*365 + yr/4 - yr/100 + yr/400 + (mn * 306 + 5) / 10
 	    + dy - 1 - E_JDAY) * SEC_PER_DAY;
 }
 
+/* Converts a pacific timestamp to UTC. Faster than mktime() by a lot. */
 static uint32_t convert_pt_utc(uint32_t pacificTime)
 {
 	/* Attempt to switch PT to UTC (including daylight savings time. :\) */
@@ -62,42 +102,16 @@ static int8_t convert_range_byte(int range)
 	}
 }
 
-static int set_tokens(token *tokens, uint64_t orderid, uint32_t regionid,
-    uint32_t systemid, uint32_t stationid, uint32_t typeid, int8_t bid,
-    uint64_t price, uint32_t volmin, uint32_t volrem, uint32_t volent,
-    uint32_t issued, uint8_t duration, int8_t range, uint64_t reportedby,
-    uint32_t rtime)
+int parser(uint64_t *orderid, uint64_t *price, uint64_t *reportedby,
+    uint32_t *issued, uint32_t *rtime, uint32_t *regionid, uint32_t *systemid,
+    uint32_t *stationid, uint32_t *typeid, uint32_t *volmin, uint32_t *volrem,
+    uint32_t *volent, uint8_t *range, uint8_t *duration, uint8_t *bid)
 {
-	/* Input Order:
-	 * orderid, regionid, systemid, stationid, typeid, bid, price, volmin,
-	 * volrem, volent, issued, duration, range, reportedby, rtime
-	*/
+	unsigned int issuedYear, issuedMonth, issuedDay, issuedHour, issuedMin;
+	unsigned int issuedSec, issuedSecTenth, rtimeYear, rtimeMonth, rtimeDay;
+	unsigned int rtimeHour, rtimeMin, rtimeSec, rtimeSecTenth;
 
-	/* It's "abstraction violating" but I'm not bothering to check for
-	 * memory allocation in set_token because I know that small datasets
-	 * < 9 bytes are copied to internal buffers and therefore there's no
-	 * memory allocation occuring to fail anyway.
-	*/
 
-	unsigned int i = 0;
-
-	set_token(&tokens[i++],	&orderid,	sizeof(orderid));
-	set_token(&tokens[i++],	&regionid,	sizeof(regionid));
-	set_token(&tokens[i++], &systemid,	sizeof(systemid));
-	set_token(&tokens[i++], &stationid,	sizeof(stationid));
-	set_token(&tokens[i++], &typeid,	sizeof(typeid));
-	set_token(&tokens[i++], &bid,		sizeof(bid));
-	set_token(&tokens[i++], &price,		sizeof(price));
-	set_token(&tokens[i++], &volmin,	sizeof(volmin));
-	set_token(&tokens[i++], &volrem,	sizeof(volrem));
-	set_token(&tokens[i++], &volent,	sizeof(volent));
-	set_token(&tokens[i++], &issued,	sizeof(issued));
-	set_token(&tokens[i++], &duration,	sizeof(duration));
-	set_token(&tokens[i++], &range,		sizeof(range));
-	set_token(&tokens[i++], &reportedby,	sizeof(reportedby));
-	set_token(&tokens[i++], &rtime,		sizeof(rtime));
-
-	return 0;
 }
 
 /*
@@ -105,7 +119,6 @@ static int set_tokens(token *tokens, uint64_t orderid, uint32_t regionid,
  * 1 is returned for improper data.
  *
  * Historical caveats: Buy order ranges incorrect, and time in Pacific.
- *
  * There's no specifier in C89 for int8_t, so we get some compiler warnings
  * with %u. In C99 we'd use %hhu.
  *

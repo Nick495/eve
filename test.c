@@ -16,21 +16,43 @@
 #include "eve_parser.h"
 
 #define FCNT 16
+#define BUFSIZE 16384
 
-void create_path(char *buf, const char *dp, const char *name, const char *ext)
+static int create_path(char *buf, const size_t blen,
+    const char *dp, const char *name, const char *ext)
 {
-	memcpy(buf, dp, strlen(dp));
-	memcpy(buf + strlen(dp), name, strlen(name));
-	memcpy(buf + strlen(dp) + strlen(name), ext, strlen(ext) + 1);
+	const size_t dlen = strlen(dp);
+	const size_t nlen = strlen(name);
+	const size_t elen = strlen(ext);
+
+	if (blen < dlen + nlen + elen + 1) { /* And null terminator. */
+		return 1;
+	}
+
+	memcpy(buf, dp, dlen);
+	memcpy(buf + dlen, name, nlen);
+	memcpy(buf + dlen + nlen, ext, elen + 1); /* And null terminator. */
+	return 0;
 }
 
-int write_tokens(int *fds, token *tokens, const size_t tokenCount)
+static int write_token(FILE *f, token *t)
+{
+	if (fwrite(t->ptr, t->len, 1, f) < 1) {
+		return 1;
+	}
+
+	return 0;
+}
+
+static int write_tokens(FILE **fs, token *tokens, const size_t tokenCount)
 {
 	size_t i;
-	size_t len;
 	for (i = 0; i < tokenCount; ++i) {
-		len = write(fds[i], tokens[i].ptr, tokens[i].len);
-		assert(len == tokens[i].len);
+		if (write_token(fs[i], &(tokens[i]))) {
+			printf("DEBUG: %zu, %zu\n", i, tokens[i].len);
+			perror("fwrite:");
+			return 1;
+		}
 	}
 
 	return 0;
@@ -41,29 +63,41 @@ int main(void)
 	const char *dirpath = "./data/";
 	const char *ext = ".db";
 	const char *names[FCNT] = {
-		"orderid", "price", "reportedby", "issued", "regionid",
-		"systemid", "stationid", "typeid", "volmin", "volrem",
-		"volent", "reportedtime", "duration", "range", "bid", "deleted"
+		"orderid", "regionid", "systemid", "stationid", "typeid",
+		"bid", "price", "volmin", "volrem", "volent", "issued",
+		"duration", "range", "reportedby", "reportedtime", "deleted"
 	};
-	char buf[256]; /* Arbitrary length, fix later. */
+	char buf[BUFSIZE]; /* Arbitrary length, fix later. */
 	uint32_t year, month, day;
-	int fds[FCNT];
+	FILE* fs[FCNT];
 	token tokens[FCNT];
 	Parser parser;
 	ssize_t i = 0;
 
-
 	/* Open necessary files. */
 	for (i = 0; i < FCNT; ++i) {
-		create_path(buf, dirpath, names[i], ext);
+		if (create_path(buf, BUFSIZE, dirpath, names[i], ext)) {
+			printf("Buflen too short.\n");
+			goto fail_open;
+		}
 
-		fds[i] = open(buf, O_WRONLY|O_APPEND|O_CREAT, 0644);
-		if (fds[i] < 0) {
+		fs[i] = fopen(buf, "ab");
+		if (fs[i] == NULL) {
 			printf("%s\n", buf);
 			perror("Open");
 			goto fail_open;
 		}
+
+		if (init_token(&(tokens[i]))) {
+			printf("%s\n", buf);
+			goto fail_init_token;
+		}
 	}
+
+	/* Initially none of them are deleted. */
+	memset(tokens[15]._buf, 0, sizeof(uint8_t));
+	tokens[15].ptr = tokens[15]._buf;
+	tokens[15].len = sizeof(uint8_t);
 
 	/* Read from stdin and write to files. */
 	while ((i = scanf("%u-%u-%u\n", &year, &month, &day) == 3)) {
@@ -73,19 +107,23 @@ int main(void)
 
 		/* Parse the whole file. */
 		while ((i = parser(tokens, FCNT)) >= 0) {
-			if (!i) {
-				write_tokens(fds, tokens, FCNT);
+			if (i == 0) {
+				write_tokens(fs, tokens, FCNT);
 			}
 		}
 
 		printf("Finished file: %u-%u-%u\n", year, month, day);
 	}
 
+	for (i = 0; i < FCNT; ++i) {
+		fclose(fs[i]);
+	}
 	return EXIT_SUCCESS;
 
+fail_init_token:
 fail_open:
 	for (; i > 0; --i) {
-		close(fds[i - 1]);
+		fclose(fs[i - 1]);
 	}
 
 	return EXIT_FAILURE;

@@ -5,21 +5,34 @@
  * See LICENSE.txt
 */
 
+void init_token(token *t)
+{
+	memset(t, 0, sizeof(struct tokent));
+
+	/* Optimistically assume the buffer is big enough. */
+	t->len = BLEN;
+	t->ptr = t->_buf;
+
+	return 0;
+}
+
 int set_token(token *t, void *ptr, const size_t plen)
 {
-	/* Preconditions */
+	/* Preconditions: */
 	assert(plen > 0);
 
-	t->ptr = NULL;
+	/* If the length we need is longer than we've had, get space for it. */
+	if (t->len < plen) {
+		/* Reallocate the array if we've already allocated one. */
+		if (t->len > BLEN) {
+			t->ptr = realloc(t->ptr, plen);
+		} else {
+			t->ptr = malloc(plen);
+		}
 
-	if (plen <= BLEN) {
-		t->ptr = t->_buf; /* Small optimization. */
-	} else {
-		t->ptr = malloc(sizeof(plen));
-	}
-
-	if (!t->ptr) {
-		return 1;
+		if (!t->ptr) {
+			return 1;
+		}
 	}
 
 	memcpy(t->ptr, ptr, plen);

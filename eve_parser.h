@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h> /* assert() */
+#include <unistd.h> /* STDIN_FILENO */
 
 #include "token.h"
 
