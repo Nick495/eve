@@ -9,7 +9,7 @@
 
 #include "token.h"
 
-typedef int (*Parser)(token *tokens, const size_t tokenCount);
+typedef int (*Parser)(const char *str, token *tokens, const size_t tokenCount);
 
 Parser parser_factory(const uint32_t yr, const uint32_t mn, const uint32_t dy);
 

@@ -102,28 +102,18 @@ static int8_t convert_range_byte(int range)
 	}
 }
 
-int parser(uint64_t *orderid, uint64_t *price, uint64_t *reportedby,
-    uint32_t *issued, uint32_t *rtime, uint32_t *regionid, uint32_t *systemid,
-    uint32_t *stationid, uint32_t *typeid, uint32_t *volmin, uint32_t *volrem,
-    uint32_t *volent, uint8_t *range, uint8_t *duration, uint8_t *bid)
-{
-	unsigned int issuedYear, issuedMonth, issuedDay, issuedHour, issuedMin;
-	unsigned int issuedSec, issuedSecTenth, rtimeYear, rtimeMonth, rtimeDay;
-	unsigned int rtimeHour, rtimeMin, rtimeSec, rtimeSecTenth;
-
-
-}
-
 /*
  * Return 0 on successful parsing, -1 on malformed input and -2 on alloc error.
  * 1 is returned for improper data.
  *
+*/
+/*
  * Historical caveats: Buy order ranges incorrect, and time in Pacific.
  * There's no specifier in C89 for int8_t, so we get some compiler warnings
  * with %u. In C99 we'd use %hhu.
  *
 */
-int parse_v1(token *tokens, const size_t tokenCount)
+int parse_v1(const char *str, token *tokens, const size_t tokenCount)
 {
 	uint64_t orderid, price, reportedby;
 	uint32_t issued, rtime;
@@ -138,8 +128,8 @@ int parse_v1(token *tokens, const size_t tokenCount)
 	/* Precondition */
 	assert(tokenCount > 14);
 
-	if (scanf("%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , %u , "
-	    "%u-%u-%u %u:%u:%u.%c%*[^,], %u:%*u:%*u:%*u.%*c%*[^,], %u , "
+	if (sscanf(str, "%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , "
+	    "%u , %u-%u-%u %u:%u:%u.%c%*[^,], %u:%*u:%*u:%*u.%*c%*[^,], %u , "
 	    "%llu , %u-%u-%u %u:%u:%u.%c%*[^\n]\n",
 	    &orderid, &regionid, &systemid, &stationid, &typeid, &bid,
 	    &price, &priceTenths, &volmin, &volrem, &volent, &issuedYear,
@@ -181,7 +171,7 @@ int parse_v1(token *tokens, const size_t tokenCount)
 }
 
 /* Historical caveat: Time in Pacific. (Buy order ranges now correct) */
-int parse_v2(token *tokens, const size_t tokenCount)
+int parse_v2(const char *str, token *tokens, const size_t tokenCount)
 {
 	uint64_t orderid, price, reportedby;
 	uint32_t issued, rtime;
@@ -196,8 +186,8 @@ int parse_v2(token *tokens, const size_t tokenCount)
 	/* Precondition */
 	assert(tokenCount > 14);
 
-	if (scanf("%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , %u , "
-	    "%u-%u-%u %u:%u:%u.%c%*[^,], %u:%*u:%*u:%*u.%*c%*[^,], %u , "
+	if (sscanf(str, "%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , "
+	    "%u , %u-%u-%u %u:%u:%u.%c%*[^,], %u:%*u:%*u:%*u.%*c%*[^,], %u , "
 	    "%llu , %u-%u-%u %u:%u:%u.%c%*[^\n]\n",
 	    &orderid, &regionid, &systemid, &stationid, &typeid, &bid,
 	    &price, &priceTenths, &volmin, &volrem, &volent, &issuedYear,
@@ -232,7 +222,7 @@ int parse_v2(token *tokens, const size_t tokenCount)
 }
 
 /* Historical caveat: Switch to UTC. */
-int parse_v3(token *tokens, const size_t tokenCount)
+int parse_v3(const char *str, token *tokens, const size_t tokenCount)
 {
 	uint64_t orderid, price, reportedby;
 	uint32_t issued, rtime;
@@ -247,8 +237,8 @@ int parse_v3(token *tokens, const size_t tokenCount)
 	/* Precondition */
 	assert(tokenCount > 14);
 
-	if (scanf("%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , %u , "
-	    "%u-%u-%u %u:%u:%u.%c%*[^,], %u:%*u:%*u:%*u.%*c%*[^,], %u , "
+	if (sscanf(str, "%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , "
+	    "%u , %u-%u-%u %u:%u:%u.%c%*[^,], %u:%*u:%*u:%*u.%*c%*[^,], %u , "
 	    "%llu , %u-%u-%u %u:%u:%u.%c%*[^\n]\n",
 	    &orderid, &regionid, &systemid, &stationid, &typeid, &bid,
 	    &price, &priceTenths, &volmin, &volrem, &volent, &issuedYear,
@@ -283,7 +273,7 @@ int parse_v3(token *tokens, const size_t tokenCount)
 }
 
 /* Historical caveat: Switched duration format */
-int parse_v4(token *tokens, const size_t tokenCount)
+int parse_v4(const char *str, token *tokens, const size_t tokenCount)
 {
 	uint64_t orderid, price, reportedby;
 	uint32_t issued, rtime;
@@ -299,14 +289,14 @@ int parse_v4(token *tokens, const size_t tokenCount)
 	assert(tokenCount > 14);
 
 	/* We now only have 26 fields because we no longer have *SecTenths. */
-	if (scanf("%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , %u , "
-		"%u-%u-%u %u:%u:%u , %u day %*[^ ] %*u:%*u:%*u , %u , %llu , "
-		"%u-%u-%u %u:%u:%u %*[^\n]\n", &orderid, &regionid, &systemid,
-		&stationid, &typeid, &bid, &price, &priceTenths, &volmin,
-		&volrem, &volent, &issuedYear, &issuedMonth, &issuedDay,
-		&issuedHour, &issuedMin, &issuedSec, &duration, &range,
-		&reportedby, &rtimeYear, &rtimeMonth, &rtimeDay, &rtimeHour,
-		&rtimeMin,&rtimeSec) != 26) {
+	if (sscanf(str, "%llu , %u , %u , %u , %u , %c , %llu.%u , %u , %u , "
+	    "%u , %u-%u-%u %u:%u:%u , %u day %*[^ ] %*u:%*u:%*u , %u , %llu , "
+	    "%u-%u-%u %u:%u:%u %*[^\n]\n", &orderid, &regionid, &systemid,
+	    &stationid, &typeid, &bid, &price, &priceTenths, &volmin,
+	    &volrem, &volent, &issuedYear, &issuedMonth, &issuedDay,
+	    &issuedHour, &issuedMin, &issuedSec, &duration, &range,
+	    &reportedby, &rtimeYear, &rtimeMonth, &rtimeDay, &rtimeHour,
+	    &rtimeMin,&rtimeSec) != 26) {
 		return -1;
 	}
 
@@ -334,7 +324,7 @@ int parse_v4(token *tokens, const size_t tokenCount)
 }
 
 /* Historical caveat: Switched to quoted fields. */
-int parse_v5(token *tokens, const size_t tokenCount)
+int parse_v5(const char *str, token *tokens, const size_t tokenCount)
 {
 	uint64_t orderid, price, reportedby;
 	uint32_t issued, rtime;
@@ -349,8 +339,8 @@ int parse_v5(token *tokens, const size_t tokenCount)
 	/* Precondition */
 	assert(tokenCount > 14);
 
-	if (scanf("\"%llu\",\"%u\",\"%u\",\"%u\",\"%u\",\"%c\",\"%llu.%u\","
-		    "\"%u\",\"%u\",\"%u\",\"%u-%u-%u %u:%u:%u\","
+	if (sscanf(str, "\"%llu\",\"%u\",\"%u\",\"%u\",\"%u\",\"%c\","
+		    "\"%llu.%u\",\"%u\",\"%u\",\"%u\",\"%u-%u-%u %u:%u:%u\","
 		    "\"%u day %*[^ ] %*u:%*u:%*u\",\"%u\",\"%llu\","
 		    "\"%u-%u-%u %u:%u:%u %*[^\n]\n", &orderid, &regionid,
 		    &systemid, &stationid, &typeid, &bid, &price, &priceTenths,

@@ -5,7 +5,7 @@
  * See LICENSE.txt
 */
 
-void init_token(token *t)
+int init_token(token *t)
 {
 	memset(t, 0, sizeof(struct tokent));
 

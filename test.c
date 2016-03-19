@@ -106,13 +106,17 @@ int main(void)
 		parser = parser_factory(year, month, day);
 
 		/* Parse the whole file. */
-		while ((i = parser(tokens, FCNT)) >= 0) {
-			if (i == 0) {
+		while (fgets(buf, BUFSIZE, stdin) != NULL) {
+			if ((i = parser(buf, tokens, FCNT)) == 0) {
 				write_tokens(fs, tokens, FCNT);
 			}
 		}
 
-		printf("Finished file: %u-%u-%u\n", year, month, day);
+		if (!feof(stdin) && ferror(stdin)) {
+			printf("Error reading: %u-%u-%u\n", year, month, day);
+		} else {
+			printf("Finished file: %u-%u-%u\n", year, month, day);
+		}
 	}
 
 	for (i = 0; i < FCNT; ++i) {
