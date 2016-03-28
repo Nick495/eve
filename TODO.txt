@@ -1,10 +1,8 @@
 TODO:
 	Investigate ranges of 1,2,3,4. (Valid or not?)
 
-	parsing is now 20.8% of runtime. (57% of which is in a custom strtol).
-	fwrite() Now takes approximately 60% of execution time, while reading
-	takes 11.5%. I'm not sure how to further reduce the parsing percentage,
-	so I'll have to investiagte decreasing the contribution of fwrite().
+	Time distribution:
+		33.5% parse
+		28% fgets (input)
+		27.1% fwrite (output)
 
-	This will necessitate changing the output format to be better. (Which
-	we need to do anyway).

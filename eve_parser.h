@@ -1,6 +1,8 @@
 #ifndef EVE_PARSER_H_
 #define EVE_PARSER_H_
 
+#include <assert.h> /* assert() */
+#include <stdlib.h> /* NULL */
 #include <stdint.h> /* uint*_t */
 #include <ctype.h>  /* isdigit() */
 
@@ -27,7 +29,7 @@ struct raw_record {
 					* -1 = station, 0 = SS,
 					* 5, 10, 20, and 40 jumps.
                                         */
-	uint8_t		bid:1;		/* 6 1 = buy, 0 = sell. (bid, offer) */
+	uint8_t		bid;		/* 6 1 = buy, 0 = sell. (bid, offer) */
 };
 
 typedef int (*Parser)(const char *str, struct raw_record *rec);

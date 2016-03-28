@@ -3,7 +3,7 @@
 mkfifo ./lol.pipe
 
 #./test < ./lol.pipe >log.txt &
-iprofiler -T 20s -timeprofiler ./test < ./lol.pipe >log.txt &
+time ./test < ./lol.pipe >log.txt &
 
 # Redirecting 3 to pipe keeps the pipe open over multiple iterations through
 # the loop, as opposed to closing it each time.
