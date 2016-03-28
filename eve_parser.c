@@ -1,5 +1,4 @@
 #include "eve_parser.h"
-#include "token.h"
 
 #define E_JDAY 719558       /* Julian Day of epoch (1970-1-1) */
 #define SEC_PER_DAY 86400
@@ -7,14 +6,15 @@
 #define SEC_PER_MIN 60
 
 /* Fast converter between years and Epoch normalized Julian Days, in seconds */
-static uint32_t ejday(const uint32_t yr, const uint32_t mn, const uint32_t dy)
+typedef unsigned int uint;
+static uint32_t ejday(const uint year, const uint month, const uint day)
 {
-	return (yr*365 + yr/4 - yr/100 + yr/400 + (mn * 306 + 5) / 10
-	    + dy - 1 - E_JDAY) * SEC_PER_DAY;
+	return (year*365 + year/4 - year/100 + year/400
+	    + (month * 306 + 5) / 10 + day - 1 - E_JDAY) * SEC_PER_DAY;
 }
 
 /* Converts a pacific timestamp to UTC. Faster than mktime() by a lot. */
-static uint32_t pt_to_utc(uint32_t pacificTime)
+static uint32_t pt_to_utc(const uint32_t pacificTime)
 {
 	/* Attempt to switch PT to UTC (including daylight savings time. :\) */
 	/* YYYY-MM-DD-HH in PT (These are the date-times where daylight savings
@@ -41,7 +41,7 @@ static uint32_t pt_to_utc(uint32_t pacificTime)
 }
 
 /* Returns -2 on failure. */
-static int8_t range_to_byte(int range)
+static int8_t range_to_byte(const int range)
 {
 	switch(range) {
 	case -1:
@@ -64,7 +64,7 @@ static int8_t range_to_byte(int range)
 	}
 }
 
-static uint64_t parse_num(const char **s)
+static uint64_t parse_uint64(const char **s)
 {
 	const char *str = *s;
 	uint64_t val = 0;
@@ -80,10 +80,41 @@ static uint64_t parse_num(const char **s)
 	return val;
 }
 
+static uint32_t parse_uint32(const char **s)
+{
+	const char *str = *s;
+	uint32_t val = 0;
+
+	while (!isdigit(*str) && *str != '\0')
+		str++; /* Skip leading non-digits */
+
+	while (isdigit(*str))
+		val = val * 10 + *str++ - '0'; /* Assume base 10 */
+
+	*s = str;
+
+	return val;
+}
+
+static int parse_int(const char **s)
+{
+	const char *str = *s;
+	int val = 0;
+
+	while (!isdigit(*str) && *str != '\0')
+		str++; /* Skip leading non-digits */
+
+	while (isdigit(*str))
+		val = val * 10 + *str++ - '0'; /* Assume base 10 */
+
+	*s = str;
+
+	return val;
+}
+
 static int8_t parse_range(const char **s)
 {
 	const char *str = *s;
-	int8_t val = 0;
 
 	while (!isdigit(*str) && *str != '\0' && *str != '-')
 		str++; /* Skip leading non-digits */
@@ -93,7 +124,7 @@ static int8_t parse_range(const char **s)
 	}
 
 	*s = str;
-	return range_to_byte(parse_num(s));
+	return range_to_byte(parse_int(s));
 }
 
 /*
@@ -110,86 +141,58 @@ static int8_t parse_range(const char **s)
  * orderid, regionid, systemid, stationid, typeid, bid, price, volmin,
  * volrem, volent, issued, duration, range, reportedby, rtime
 */
-void parser(const char *str, token *tokens, const size_t tokenCount)
+void parser(const char *str, struct raw_record *rec)
 {
-	uint64_t a = 0;
-	int b,c,d;
-
-	uint32_t u32 = 0;
-	int8_t i8 = 0;
-	uint8_t u8 = 0;
-
-	/* Preconditions */
-	assert(tokenCount > 14);
-
-	a = parse_num(&str);
-	set_token(&tokens[0], &a, sizeof(uint64_t));	/* orderid */
-	u32 = (uint32_t) parse_num(&str);
-	set_token(&tokens[1], &u32, sizeof(uint32_t));	/* regionid */
-	u32 = (uint32_t) parse_num(&str);
-	set_token(&tokens[2], &u32, sizeof(uint32_t));	/* systemid */
-	u32 = (uint32_t) parse_num(&str);
-	set_token(&tokens[3], &u32, sizeof(uint32_t));	/* stationid */
-	u32 = (uint32_t) parse_num(&str);
-	set_token(&tokens[4], &u32, sizeof(uint32_t));	/* typeid */
-	i8 = (int8_t) (parse_num(&str));
-	set_token(&tokens[5], &i8, sizeof(int8_t));	/* bid */
-	a = parse_num(&str) * 100;
-	if (*str == '.') {
-		//printf("DEBUG: GOT HERE!\n");
+	rec->orderID = parse_uint64(&str);
+	rec->regionID = parse_uint32(&str);
+	rec->systemID = parse_uint32(&str);
+	rec->stationID = parse_uint32(&str);
+	rec->typeID = parse_uint32(&str);
+	rec->bid = (uint8_t)parse_int(&str);
+	rec->price = parse_uint64(&str) * 100;
+	if (*str == '.') { /* Cents & cent field are optional */
 		str++;
-		a += (*str++ - '0') * 10;
+		rec->price += (*str++ - '0') * 10;
 		if (isdigit(*str)) {
-			a += (*str++ - '0');
+			rec->price += (*str++ - '0');
 		}
 	}
-	set_token(&tokens[6], &a, sizeof(uint64_t));	/* price*/
-	u32 = (uint32_t) parse_num(&str);
-	set_token(&tokens[7], &u32, sizeof(uint32_t));	/* volmin */
-	u32 = (uint32_t) parse_num(&str);
-	set_token(&tokens[8], &u32, sizeof(uint32_t));	/* volrem */
-	u32 = (uint32_t) parse_num(&str);
-	set_token(&tokens[9], &u32, sizeof(uint32_t));	/* volent */
+	rec->volMin = parse_uint32(&str);
+	rec->volRem = parse_uint32(&str);
+	rec->volEnt = parse_uint32(&str);
 
-	b = parse_num(&str);				/* issuedYear */
-	c = parse_num(&str);				/* issuedMonth */
-	d = parse_num(&str);				/* issuedDay */
-	u32 = ejday(b, c, d);
+	/* Year, month, day */
+	rec->issued = ejday(parse_int(&str), parse_int(&str), parse_int(&str));
 
-	b = parse_num(&str);				/* issuedHour */
-	c = parse_num(&str);				/* issuedMin */
-	d = parse_num(&str);				/* issuedSec */
-	u32 += b * SEC_PER_HOUR + c * SEC_PER_MIN + d;
+	rec->issued += parse_int(&str) * SEC_PER_HOUR;
+	rec->issued += parse_int(&str) * SEC_PER_MIN;
+	rec->issued += parse_int(&str);
+
 	if (isdigit(*str) && *str - '0' > 5) {
-		u32++; /* Round time to the nearest second. */
+		rec->issued++; /* Round time to the nearest second. */
 	}
-	set_token(&tokens[10], &u32, sizeof(uint32_t));	/* issued */
 
-	u32 = parse_num(&str);				/* duration: XX Days*/
-	b = parse_num(&str);				/* Hour */
-	b = parse_num(&str);				/* Min */
-	b = parse_num(&str);				/* Sec  */
-	set_token(&tokens[11], &u32, sizeof(uint32_t));	/* Duration */
+	rec->duration = (uint16_t)parse_uint32(&str); /* Day(s) */
+	/* There's an hour, min, and sec field that's never used, so skip. */
+	parse_int(&str);				/* Hour */
+	parse_int(&str);				/* Min */
+	parse_int(&str);				/* Sec  */
 
-	i8 = parse_range(&str);	/* Special since range has negatives. */
-	set_token(&tokens[12], &i8, sizeof(int8_t));	/* range */
+	/* Special since range has negatives. */
+	rec->range = parse_range(&str);
 
-	a = parse_num(&str);
-	set_token(&tokens[13], &a, sizeof(uint64_t));	/* reportedby */
+	rec->reportedby = parse_uint64(&str);
 
-	b = parse_num(&str);				/* reportedYear */
-	c = parse_num(&str);				/* reportedMonth */
-	d = parse_num(&str);				/* reportedDay */
-	u32 = ejday(b, c, d);
+	/* Year, month, day again */
+	rec->rtime = ejday(parse_int(&str), parse_int(&str), parse_int(&str));
 
-	b = parse_num(&str);				/* reportedHour */
-	c = parse_num(&str);				/* reportedMin */
-	d = parse_num(&str);				/* reportedSec */
-	u32 += b * SEC_PER_HOUR + c * SEC_PER_MIN + d;
+	rec->rtime += parse_int(&str) * SEC_PER_HOUR;
+	rec->rtime += parse_int(&str) * SEC_PER_MIN;
+	rec->rtime += parse_int(&str);
+
 	if (isdigit(*str) && *str - '0' > 5) {
-		u32++; /* Round time to the nearest second. */
+		rec->rtime++; /* Round time to the nearest second. */
 	}
-	set_token(&tokens[14], &u32, sizeof(uint32_t));	/* reportedtime */
 }
 
 /*
@@ -198,71 +201,54 @@ void parser(const char *str, token *tokens, const size_t tokenCount)
  * with %u. In C99 we'd use %hhu.
  *
 */
-int parse_pt_bo(const char *str, token *tokens, const size_t tokenCount)
+int parse_pt_bo(const char *str, struct raw_record *rec)
 {
-	/* Preconditions */
-	assert(tokenCount > 14);
+	parser(str, rec);
 
-	parser(str, tokens, tokenCount);
 	/* Buy order ranges are incorrect for this period. */
 	/* If it's a buy order (bid) then estimate the range as the smallest.*/
-	if (*(uint8_t *)tokens[5].ptr > '1') {
+	if (rec->bid > 1) {
 		return 1;
-	} else if (*(uint8_t *)tokens[5].ptr == '1') {
-		*(int8_t *)tokens[12].ptr = range_to_byte(-1);
+	} else if (rec->bid == 1) {
+		rec->range = range_to_byte(-1);
 	}
 
-	/* If we have a bad range, or an issued time earlier than reported
-	 * return bad value.
-	*/
-	if ((*(int8_t *)tokens[12].ptr == -2) ||
-	    (*(uint32_t *)tokens[10].ptr > *(uint32_t *)tokens[14].ptr)) {
+	/* If range is bad or issued is earlier than reported return bad val */
+	if (rec->range == -2 || (rec->issued > rec->rtime)) {
 		return 1;
 	}
 
 	/* Convert pacific time stamps to UTC. */
-	*(uint32_t *)tokens[10].ptr = pt_to_utc(*(uint32_t*)tokens[10].ptr);
-	*(uint32_t *)tokens[14].ptr = pt_to_utc(*(uint32_t*)tokens[14].ptr);
+	rec->issued = pt_to_utc(rec->issued);
+	rec->rtime = pt_to_utc(rec->rtime);
 
 	return 0;
 }
 
 /* Historical caveat: Time in Pacific. (Buy order ranges now correct) */
-int parse_pt(const char *str, token *tokens, const size_t tokenCount)
+int parse_pt(const char *str, struct raw_record *rec)
 {
-	/* Preconditions */
-	assert(tokenCount > 14);
+	parser(str, rec);
 
-	parser(str, tokens, tokenCount);
-
-	/* If we have a bad range, or an issued time earlier than reported
-	 * return bad value.
-	*/
-	if ((*(int8_t *)tokens[12].ptr == -2) ||
-	    (*(uint32_t *)tokens[10].ptr > *(uint32_t *)tokens[14].ptr)) {
+	/* If range is bad or issued is earlier than reported return bad val */
+	if (rec->range == -2 || (rec->issued > rec->rtime)) {
 		return 1;
 	}
 
 	/* Convert pacific time stamps to UTC. */
-	*(uint32_t *)tokens[10].ptr = pt_to_utc(*(uint32_t*)tokens[10].ptr);
-	*(uint32_t *)tokens[14].ptr = pt_to_utc(*(uint32_t*)tokens[14].ptr);
+	rec->issued = pt_to_utc(rec->issued);
+	rec->rtime = pt_to_utc(rec->rtime);
 
 	return 0;
 }
 
 /* Historical caveat: Switch to UTC. */
-int parse(const char *str, token *tokens, const size_t tokenCount)
+int parse(const char *str, struct raw_record *rec)
 {
-	/* Preconditions */
-	assert(tokenCount > 14);
+	parser(str, rec);
 
-	parser(str, tokens, tokenCount);
-
-	/* If we have a bad range, or an issued time earlier than reported
-	 * return bad value.
-	*/
-	if ((*(int8_t *)tokens[12].ptr == -2) ||
-	    (*(uint32_t *)tokens[10].ptr > *(uint32_t *)tokens[14].ptr)) {
+	/* If range is bad or issued is earlier than reported return bad val */
+	if (rec->range == -2 || (rec->issued > rec->rtime)) {
 		return 1;
 	}
 
