@@ -1,8 +1,5 @@
 TODO:
 	Investigate ranges of 1,2,3,4. (Valid or not?)
+	According to the EVE 3rd-party documentation, no.
 
-	Time distribution:
-		33.5% parse
-		28% fgets (input)
-		27.1% fwrite (output)
-
+	Implement log rotating for files.

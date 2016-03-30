@@ -50,20 +50,6 @@ range_to_byte(const int range)
 		return -1;
 	case 0:
 		return 0;
-#if 0
-	/* Technically, according to
-	 * http://eveonline-third-party-documentation.readthedocs.org the only
-	 * valid values for range are -1, 0, 5, 10, 20, 40, 32767, and 65535
-	*/
-	case 1:
-		return 1;
-	case 2:
-		return 2;
-	case 3:
-		return 3;
-	case 4:
-		return 4;
-#endif
 	case 5:
 		return 5;
 	case 10:
@@ -99,44 +85,6 @@ parse_uint64(const char **s)
 	return val;
 }
 
-static uint32_t
-parse_uint32(const char **s)
-{
-	assert(s != NULL);
-
-	const char *str = *s;
-	uint32_t val = 0;
-
-	while (!isdigit(*str) && *str != '\0')
-		str++; /* Skip leading non-digits */
-
-	while (isdigit(*str))
-		val = val * 10 + *str++ - '0'; /* Assume base 10 */
-
-	*s = str;
-
-	return val;
-}
-
-static unsigned int
-parse_uint(const char **s)
-{
-	assert(s != NULL);
-
-	const char *str = *s;
-	int val = 0;
-
-	while (!isdigit(*str) && *str != '\0')
-		str++; /* Skip leading non-digits */
-
-	while (isdigit(*str))
-		val = val * 10 + *str++ - '0'; /* Assume base 10 */
-
-	*s = str;
-
-	return val;
-}
-
 static int8_t
 parse_range(const char **s)
 {
@@ -152,7 +100,33 @@ parse_range(const char **s)
 	}
 
 	*s = str;
-	return range_to_byte(parse_uint(s));
+	return range_to_byte((unsigned int)parse_uint64(s));
+}
+
+static uint32_t
+parse_datetime(const char **s)
+{
+	assert(s != NULL);
+
+	const char *str = *s;
+	uint32_t val = 0;
+
+	/* Year, month, day */
+	val =
+	    ejday((unsigned int)parse_uint64(&str),
+		(unsigned int)parse_uint64(&str),
+		(unsigned int)parse_uint64(&str));
+
+	val += (uint32_t)parse_uint64(&str) * SEC_PER_HOUR;
+	val += (uint32_t)parse_uint64(&str) * SEC_PER_MIN;
+	val += (uint32_t)parse_uint64(&str);
+
+	if (isdigit(*str) && *str - '0' > 5) {
+		val++; /* Round time to the nearest second. */
+	}
+
+	*s = str;
+	return val;
 }
 
 /*
@@ -176,11 +150,11 @@ parser(const char *str, struct raw_record *rec)
 	assert(rec != NULL);
 
 	rec->orderID = parse_uint64(&str);
-	rec->regionID = parse_uint32(&str);
-	rec->systemID = parse_uint32(&str);
-	rec->stationID = parse_uint32(&str);
-	rec->typeID = parse_uint32(&str);
-	rec->bid = (uint8_t)parse_uint(&str);
+	rec->regionID = (uint32_t)parse_uint64(&str);
+	rec->systemID = (uint32_t)parse_uint64(&str);
+	rec->stationID = (uint32_t)parse_uint64(&str);
+	rec->typeID = (uint32_t)parse_uint64(&str);
+	rec->bid = (uint8_t)parse_uint64(&str);
 	rec->price = parse_uint64(&str) * 100;
 	if (*str == '.') { /* Cents & cent field are optional */
 		str++;
@@ -189,27 +163,17 @@ parser(const char *str, struct raw_record *rec)
 			rec->price += (*str++ - '0');
 		}
 	}
-	rec->volMin = parse_uint32(&str);
-	rec->volRem = parse_uint32(&str);
-	rec->volEnt = parse_uint32(&str);
+	rec->volMin = (uint32_t)parse_uint64(&str);
+	rec->volRem = (uint32_t)parse_uint64(&str);
+	rec->volEnt = (uint32_t)parse_uint64(&str);
 
-	/* Year, month, day */
-	rec->issued
-	    = ejday(parse_uint(&str), parse_uint(&str), parse_uint(&str));
+	rec->issued = parse_datetime(&str);
 
-	rec->issued += parse_uint(&str) * SEC_PER_HOUR;
-	rec->issued += parse_uint(&str) * SEC_PER_MIN;
-	rec->issued += parse_uint(&str);
-
-	if (isdigit(*str) && *str - '0' > 5) {
-		rec->issued++; /* Round time to the nearest second. */
-	}
-
-	rec->duration = (uint16_t)parse_uint(&str); /* Day(s) */
+	rec->duration = (uint16_t)parse_uint64(&str); /* Day(s) */
 	/* There's an hour, min, and sec field that's never used, so skip. */
-	parse_uint(&str); /* Hour */
-	parse_uint(&str); /* Min */
-	parse_uint(&str); /* Sec  */
+	parse_uint64(&str); /* Hour */
+	parse_uint64(&str); /* Min */
+	parse_uint64(&str); /* Sec  */
 
 	/* Special since range has negatives. */
 	rec->range = parse_range(&str);
@@ -217,29 +181,18 @@ parser(const char *str, struct raw_record *rec)
 	rec->reportedby = parse_uint64(&str);
 
 	/* Year, month, day again */
-	rec->rtime
-	    = ejday(parse_uint(&str), parse_uint(&str), parse_uint(&str));
-
-	rec->rtime += parse_uint(&str) * SEC_PER_HOUR;
-	rec->rtime += parse_uint(&str) * SEC_PER_MIN;
-	rec->rtime += parse_uint(&str);
-
-	if (isdigit(*str) && *str - '0' > 5) {
-		rec->rtime++; /* Round time to the nearest second. */
-	}
+	rec->rtime = parse_datetime(&str);
 }
 
 /* Returns 0 on success, type of bad value otherwise. */
 static int
-has_badval(const struct raw_record rec)
+has_badval(const struct raw_record *rec)
 {
-	if (rec.issued > rec.rtime) {
+	if (rec->issued > rec->rtime) {
 		return 1;
-	}
-	if (rec.bid > 1) {
+	} else if (rec->bid > 1) {
 		return 2;
-	}
-	if (rec.range == -2) {
+	} else if (rec->range == -2) {
 		return 3;
 	}
 
@@ -270,7 +223,7 @@ parse_pt_bo(const char *str, struct raw_record *rec)
 	rec->issued = pt_to_utc(rec->issued);
 	rec->rtime = pt_to_utc(rec->rtime);
 
-	return has_badval(*rec);
+	return has_badval(rec);
 }
 
 /* Historical caveat: Time in Pacific. (Buy order ranges now correct) */
@@ -286,7 +239,7 @@ parse_pt(const char *str, struct raw_record *rec)
 	rec->issued = pt_to_utc(rec->issued);
 	rec->rtime = pt_to_utc(rec->rtime);
 
-	return has_badval(*rec);
+	return has_badval(rec);
 }
 
 /* Historical caveat: Switch to UTC. */
@@ -298,7 +251,7 @@ parse(const char *str, struct raw_record *rec)
 
 	parser(str, rec);
 
-	return has_badval(*rec);
+	return has_badval(rec);
 }
 
 Parser

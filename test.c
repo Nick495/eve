@@ -71,14 +71,13 @@ main(void)
 			break;
 		default:
 			printf("Bad line at line: %zu\n", linecount);
+			break;
 		}
 		linecount++;
 	}
 
 	if (ferror(stdin)) {
 		printf("Error reading: %u-%u-%u\n", year[1], month[1], day[1]);
-	} else {
-		printf("Finished file: %u-%u-%u\n", year[1], month[1], day[1]);
 	}
 
 	fclose(out);
