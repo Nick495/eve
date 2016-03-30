@@ -1,5 +1,19 @@
 TODO:
-	Investigate ranges of 1,2,3,4. (Valid or not?)
-	According to the EVE 3rd-party documentation, no.
+	Rather than log rotating, we'll just do loads of each directory, which can
+	be done in a few hours reasonably. (My prediction is that 2012, which is
+	something like 111GB will take about 11 hours. So that's about 10G/hr,
+	with (high) compression, which isn't terrible.)
 
-	Implement log rotating for files.
+	Now what we need to do is add a function to convert a bunch of struct
+	raw_records to a struct of arrays of their constituent elements (translate
+	between row-major storage and column-major storage for compression ratio
+	and aggregation performance.)
+
+	Once we have those arrays it will be trivial to compress them (just like
+	char * arrays).
+
+	Endian-independent serialization would have to occur before compression.
+
+	Bit arrays are a major pain in the ass to persist, so we'll just use byte
+	arrays and take the hit of an (at most 27 byte) header (for lz4) per 4K
+	block (.659% overhead) for ease of use.
