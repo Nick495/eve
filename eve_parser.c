@@ -6,7 +6,7 @@
 
 /* Fast converter between years and Epoch normalized Julian Days, in seconds */
 static uint32_t
-ejday(const unsigned int year, const unsigned int month, const unsigned int day)
+ejday(unsigned int year, unsigned int month, unsigned int day)
 {
 	#define E_JDAY 719558       /* Julian Day of epoch (1970-1-1) */
 	return (year*365 + year/4 - year/100 + year/400
@@ -24,7 +24,9 @@ pt_to_utc(const uint32_t pacificTime)
 	#define D2006040203 1144033200
 	#define D2006102901 1162256400
 	#define D2007031103 1173754800
+#if 0
 	#define D2007110400 1194307200
+#endif
 
 	if (pacificTime < D2006040203) {
 		return pacificTime + 8 * SEC_PER_HOUR;
@@ -43,7 +45,7 @@ pt_to_utc(const uint32_t pacificTime)
 
 /* Returns -2 on failure. */
 static int8_t
-range_to_byte(const int range)
+range_to_byte(int range)
 {
 	switch(range) {
 	case -1:
@@ -69,16 +71,18 @@ range_to_byte(const int range)
 static uint64_t
 parse_uint64(const char **s)
 {
+	const char *str;
+	uint64_t val = 0;
+
 	assert(s != NULL);
 
-	const char *str = *s;
-	uint64_t val = 0;
+	str = *s;
 
 	while (!isdigit(*str) && *str != '\0')
 		str++; /* Skip leading non-digits */
 
 	while (isdigit(*str))
-		val = val * 10 + *str++ - '0'; /* Assume base 10 */
+		val = val * 10 + (uint64_t)*str++ - '0'; /* Assume base 10 */
 
 	*s = str;
 
@@ -88,9 +92,11 @@ parse_uint64(const char **s)
 static int8_t
 parse_range(const char **s)
 {
+	const char *str;
+
 	assert(s != NULL);
 
-	const char *str = *s;
+	str = *s;
 
 	while (!isdigit(*str) && *str != '\0' && *str != '-')
 		str++; /* Skip leading non-digits */
@@ -100,20 +106,21 @@ parse_range(const char **s)
 	}
 
 	*s = str;
-	return range_to_byte((unsigned int)parse_uint64(s));
+	return range_to_byte((int)parse_uint64(s));
 }
 
 static uint32_t
 parse_datetime(const char **s)
 {
-	assert(s != NULL);
-
-	const char *str = *s;
+	const char *str;
 	uint32_t val = 0;
 
+	assert(s != NULL);
+
+	str = *s;
+
 	/* Year, month, day */
-	val =
-	    ejday((unsigned int)parse_uint64(&str),
+	val = ejday((unsigned int)parse_uint64(&str),
 		(unsigned int)parse_uint64(&str),
 		(unsigned int)parse_uint64(&str));
 
@@ -149,6 +156,8 @@ parser(const char *str, struct raw_record *rec)
 	assert(str != NULL);
 	assert(rec != NULL);
 
+	rec->bid = 3;
+
 	rec->orderID = parse_uint64(&str);
 	rec->regionID = (uint32_t)parse_uint64(&str);
 	rec->systemID = (uint32_t)parse_uint64(&str);
@@ -158,17 +167,15 @@ parser(const char *str, struct raw_record *rec)
 	rec->price = parse_uint64(&str) * 100;
 	if (*str == '.') { /* Cents & cent field are optional */
 		str++;
-		rec->price += (*str++ - '0') * 10;
+		rec->price += (uint32_t)(*str++ - '0') * 10;
 		if (isdigit(*str)) {
-			rec->price += (*str++ - '0');
+			rec->price += (uint32_t)(*str++ - '0');
 		}
 	}
 	rec->volMin = (uint32_t)parse_uint64(&str);
 	rec->volRem = (uint32_t)parse_uint64(&str);
 	rec->volEnt = (uint32_t)parse_uint64(&str);
-
 	rec->issued = parse_datetime(&str);
-
 	rec->duration = (uint16_t)parse_uint64(&str); /* Day(s) */
 	/* There's an hour, min, and sec field that's never used, so skip. */
 	parse_uint64(&str); /* Hour */
@@ -255,12 +262,14 @@ parse(const char *str, struct raw_record *rec)
 }
 
 Parser
-parser_factory(const uint32_t year, const uint32_t month, const uint32_t day)
+parser_factory(unsigned int year, unsigned int month, unsigned int day)
 {
 	#define D20070101 1167609600
 	#define D20071001 1191369600
+#if 0
 	#define D20100718 1279584000
 	#define D20110213 1297468800
+#endif
 
 	const uint64_t parsedTime = ejday(year, month, day);
 
