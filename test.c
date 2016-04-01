@@ -15,6 +15,86 @@
 
 #define BUFSIZE 65536
 
+struct rl_data {
+	char *buf;
+	char *bptr;
+	ssize_t blen;
+	size_t bcap;
+	int fd;
+};
+
+static ssize_t
+read_line(struct rl_data *data, char *buf, size_t bufsize)
+{
+	char *bufptr = buf;
+
+	assert(buf != NULL);
+	assert(bufsize > 0);
+	assert(data != NULL);
+	assert(data->buf != NULL);
+
+
+	while(--bufsize > 0) {
+		if (*data->bptr == '\n') {
+			break;
+		}
+
+		*bufptr++ = *data->bptr++;
+
+		if (data->bptr - data->buf == data->blen) {
+			/* Refill the buffer. */
+			data->blen = read(data->fd, data->buf, data->bcap);
+			if (data->blen == 0 || data->blen == -1) {
+				return data->blen;
+			}
+		}
+	}
+
+	*bufptr = '\0';
+	return bufptr - buf;
+}
+
+static int
+read_line_init(struct rl_data *data, int fd, size_t buflen)
+{
+	assert(data != NULL);
+	assert(fd > 0);
+	assert(buflen > 0);
+
+	data->buf = malloc(buflen);
+	if (!data->buf) {
+		return 1;
+	}
+
+	data->bptr = data->buf;
+	data->blen = 0;
+	data->bcap = buflen;
+	data->fd = fd;
+
+	assert(data->buf != NULL);
+	assert(data->fd > 0);
+	assert(data->bcap > 0);
+	return 0;
+}
+
+static void
+read_line_free(struct rl_data *data)
+{
+	assert(data != NULL);
+
+	free(data->buf);
+	data->bptr = data->buf = NULL;
+	data->blen = data->bcap = data->fd = 0;
+
+	return;
+}
+
+static unsigned int
+pchr(char c)
+{
+	return (unsigned int)(c - '0');
+}
+
 static int
 parse_date(const char *str,
 	unsigned int *year, unsigned int *month, unsigned int *day)
@@ -32,24 +112,13 @@ parse_date(const char *str,
 		return 1;
 	}
 
-	*year = (*str++ - '0') * 1000;
-	*year += (*str++ -'0') * 100;
-	*year += (*str++ - '0') * 10;
-	*year += (*str++ - '0');
-	str++; /* skip '-' */
+	*year = pchr(str[0]) * 1000 + pchr(str[1]) * 100;
+	*year += pchr(str[2]) * 10  + pchr(str[3]);
+	*month = pchr(str[5]) * 10 + pchr(str[6]); /* skip '-' */
+	*day = pchr(str[8]) * 10 + pchr(str[9]); /* skip '-' */
 
-	*month = (*str++ - '0') * 10;
-	*month += (*str++ - '0');
-	str++; /* skip '-' */
-
-	*day = (*str++ - '0') * 10;
-	*day = (*str++ - '0');
-
-	if (*year < 2000 || *year > 3000) {
-		return 2;
-	} else if (*month < 1 || *month > 12) {
-		return 2;
-	} else if (*day < 1 || *day > 31) {
+	if (*year < 2000 || *year > 3000 || *month < 1
+			|| *month > 12 || *day < 1 || *day > 31) {
 		return 2;
 	}
 
