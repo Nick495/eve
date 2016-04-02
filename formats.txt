@@ -1,5 +1,6 @@
 Note: All dates are in this file are in the format D-M-Y.
-Note that not all timestamps report decimal seconds.
+Note: Not all timestamps report decimal seconds.
+Note: All fields have a 3 length string ( , ) or (",") between them.
 
 File Format 1: (Beginning format)
 	Buy order ranges incorrect.

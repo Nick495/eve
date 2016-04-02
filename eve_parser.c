@@ -4,6 +4,8 @@
 #define SEC_PER_HOUR 3600
 #define SEC_PER_MIN 60
 
+#include <stdio.h>
+
 /* Fast converter between years and Epoch normalized Julian Days, in seconds */
 static uint32_t
 ejday(unsigned int year, unsigned int month, unsigned int day)
@@ -45,11 +47,9 @@ pt_to_utc(const uint32_t pacificTime)
 
 /* Returns -2 on failure. */
 static int8_t
-range_to_byte(int range)
+range_to_byte(unsigned int range)
 {
 	switch(range) {
-	case -1:
-		return -1;
 	case 0:
 		return 0;
 	case 5:
@@ -68,21 +68,30 @@ range_to_byte(int range)
 	}
 }
 
+static void
+skip_to_num(const char **s)
+{
+	const char *str = *s;
+
+	while (!isdigit(*str)) {
+		str++;
+	}
+
+	*s = str;
+	return;
+}
+
 static uint64_t
 parse_uint64(const char **s)
 {
-	const char *str;
-	uint64_t val = 0;
-
 	assert(s != NULL);
 
-	str = *s;
+	const char *str = *s;
 
-	while (!isdigit(*str) && *str != '\0')
-		str++; /* Skip leading non-digits */
-
-	while (isdigit(*str))
+	uint64_t val = 0;
+	while (isdigit(*str)) {
 		val = val * 10 + (uint64_t)*str++ - '0'; /* Assume base 10 */
+	}
 
 	*s = str;
 
@@ -92,103 +101,112 @@ parse_uint64(const char **s)
 static int8_t
 parse_range(const char **s)
 {
-	const char *str;
-
 	assert(s != NULL);
 
-	str = *s;
-
-	while (!isdigit(*str) && *str != '\0' && *str != '-')
-		str++; /* Skip leading non-digits */
-
-	if (*str == '-') {
+	if (**s == '-') {
 		return -1;
 	}
 
-	*s = str;
-	return range_to_byte((int)parse_uint64(s));
+	return range_to_byte((unsigned int)parse_uint64(s));
 }
 
 static uint32_t
 parse_datetime(const char **s)
 {
-	const char *str;
+	assert(s != NULL);
 	uint32_t val = 0;
 
-	assert(s != NULL);
-
-	str = *s;
-
 	/* Year, month, day */
-	val = ejday((unsigned int)parse_uint64(&str),
-		(unsigned int)parse_uint64(&str),
-		(unsigned int)parse_uint64(&str));
+	val = ejday((unsigned int)parse_uint64(s),
+		(unsigned int)parse_uint64(s),
+		(unsigned int)parse_uint64(s));
 
-	val += (uint32_t)parse_uint64(&str) * SEC_PER_HOUR;
-	val += (uint32_t)parse_uint64(&str) * SEC_PER_MIN;
-	val += (uint32_t)parse_uint64(&str);
+	val += (uint32_t)parse_uint64(s) * SEC_PER_HOUR;
+	val += (uint32_t)parse_uint64(s) * SEC_PER_MIN;
+	val += (uint32_t)parse_uint64(s);
 
-	if (isdigit(*str) && *str - '0' > 5) {
-		val++; /* Round time to the nearest second. */
+	/* No trailing seconds, we're done. */
+	if (**s != '.') {
+		return val;
 	}
 
-	*s = str;
+	*s += 1;
+	if (isdigit(**s) && **s - '0' > 5) {
+		val++; /* We round time to the nearest second. */
+	}
+
+	while (isdigit(**s)) { /* Skip any trailing seconds. */
+		*s += 1;
+	}
+
 	return val;
 }
 
-/*
- * Return 0 on successful parsing, -1 on malformed input and -2 on alloc error.
- * 1 is returned for improper data.
- *
-*/
-/* It's "abstraction violating" but I'm not bothering to check for
- * memory allocation in set_token because I know that small datasets
- * < 9 bytes are copied to internal buffers and therefore there's no
- * memory allocation occuring to fail anyway.
-*/
 /* Input Order:
  * orderid, regionid, systemid, stationid, typeid, bid, price, volmin,
  * volrem, volent, issued, duration, range, reportedby, rtime
 */
-void
-parser(const char *str, struct raw_record *rec)
+static struct raw_record
+parser(const char *str)
 {
+	struct raw_record rec;
+
 	assert(str != NULL);
-	assert(rec != NULL);
 
-	rec->bid = 3;
+	rec.bid = 3; /* Catch bad input */
 
-	rec->orderID = parse_uint64(&str);
-	rec->regionID = (uint32_t)parse_uint64(&str);
-	rec->systemID = (uint32_t)parse_uint64(&str);
-	rec->stationID = (uint32_t)parse_uint64(&str);
-	rec->typeID = (uint32_t)parse_uint64(&str);
-	rec->bid = (uint8_t)parse_uint64(&str);
-	rec->price = parse_uint64(&str) * 100;
+	skip_to_num(&str);
+	rec.orderID = parse_uint64(&str);
+	str += 3;
+	rec.regionID = (uint32_t)parse_uint64(&str);
+	str += 3;
+	rec.systemID = (uint32_t)parse_uint64(&str);
+	str += 3;
+	rec.stationID = (uint32_t)parse_uint64(&str);
+	str += 3;
+	rec.typeID = (uint32_t)parse_uint64(&str);
+	str += 3;
+	rec.bid = (uint8_t)parse_uint64(&str);
+	str += 3;
+	rec.price = parse_uint64(&str) * 100;
 	if (*str == '.') { /* Cents & cent field are optional */
 		str++;
-		rec->price += (uint32_t)(*str++ - '0') * 10;
+		rec.price += (uint32_t)(*str++ - '0') * 10;
 		if (isdigit(*str)) {
-			rec->price += (uint32_t)(*str++ - '0');
+			rec.price += (uint32_t)(*str++ - '0');
 		}
 	}
-	rec->volMin = (uint32_t)parse_uint64(&str);
-	rec->volRem = (uint32_t)parse_uint64(&str);
-	rec->volEnt = (uint32_t)parse_uint64(&str);
-	rec->issued = parse_datetime(&str);
-	rec->duration = (uint16_t)parse_uint64(&str); /* Day(s) */
+	skip_to_num(&str);
+	rec.volMin = (uint32_t)parse_uint64(&str);
+	str += 3;
+	rec.volRem = (uint32_t)parse_uint64(&str);
+	str += 3;
+	rec.volEnt = (uint32_t)parse_uint64(&str);
+	str += 3;
+	rec.issued = parse_datetime(&str);
+	str += 3;
+	rec.duration = (uint16_t)parse_uint64(&str); /* Day(s) */
 	/* There's an hour, min, and sec field that's never used, so skip. */
 	parse_uint64(&str); /* Hour */
 	parse_uint64(&str); /* Min */
 	parse_uint64(&str); /* Sec  */
+	if (*str == '.') {
+		str++;
+		parse_uint64(&str); /* Handle fractional seconds. */
+	}
+	str += 3;
 
 	/* Special since range has negatives. */
-	rec->range = parse_range(&str);
+	rec.range = parse_range(&str);
+	str += 3;
 
-	rec->reportedby = parse_uint64(&str);
+	rec.reportedby = parse_uint64(&str);
+	str += 3;
 
 	/* Year, month, day again */
-	rec->rtime = parse_datetime(&str);
+	rec.rtime = parse_datetime(&str);
+
+	return rec;
 }
 
 /* Returns 0 on success, type of bad value otherwise. */
@@ -218,7 +236,7 @@ parse_pt_bo(const char *str, struct raw_record *rec)
 	assert(str != NULL);
 	assert(rec != NULL);
 
-	parser(str, rec);
+	*rec = parser(str);
 
 	/* Buy order ranges are incorrect for this period. */
 	/* If it's a buy order (bid) then estimate the range as the smallest.*/
@@ -240,7 +258,7 @@ parse_pt(const char *str, struct raw_record *rec)
 	assert(str != NULL);
 	assert(rec != NULL);
 
-	parser(str, rec);
+	*rec = parser(str);
 
 	/* Convert pacific time stamps to UTC. */
 	rec->issued = pt_to_utc(rec->issued);
@@ -256,7 +274,7 @@ parse(const char *str, struct raw_record *rec)
 	assert(str != NULL);
 	assert(rec != NULL);
 
-	parser(str, rec);
+	*rec = parser(str);
 
 	return has_badval(rec);
 }

@@ -15,6 +15,32 @@
 
 #define BUFSIZE 16384
 
+struct raw_record_array {
+	/*type | name | Position in input | Description. Ordered by size & pos*/
+	uint64_t	*orderID;       /*  1 OrderID */
+	uint64_t	*price;         /*  7 Price (.1 ISK increments) */
+	uint64_t	*reportedby;	/* 14 Person reported by */
+    uint32_t	*regionID;      /*  2 Region ID (location) */
+    uint32_t	*systemID;      /*  3 System ID (location) */
+    uint32_t	*stationID;     /*  4 Station ID (location) */
+    uint32_t	*typeID;        /*  5 Item type ID. */
+    uint32_t	*volMin;        /*  8 Minimum Volume (per txn) */
+    uint32_t	*volRem;        /*  9 Remaining Volume (txn) */
+    uint32_t	*volEnt;        /* 10 (original volume in txn ) */
+    uint32_t	*issued;        /* 11 Issued (date-time) */
+	uint32_t	*rtime;			/* 15 Time reported. */
+	uint16_t	*duration;      /* 12 Duration in days, 0-90 */
+	int8_t		*range;         /* 13 Reference: http://eveonline-third-party-documentation.readthedocs.org/en/latest/xmlapi/enumerations/#order-range
+					* Buy range -1 = Station,
+					* 0 = Solar System,
+					* 5, 10, 20, or 40 Jumps 32767 Region.
+					* In our code, -2 = region,
+					* -1 = station, 0 = SS,
+					* 5, 10, 20, and 40 jumps.
+                                        */
+	uint8_t		*bid;			/* 6 1 = buy, 0 = sell. (bid, offer) */
+};
+
 struct rl_data {
 	char *buf;
 	char *bptr;
@@ -27,8 +53,6 @@ struct rl_data {
 static ssize_t
 readline(struct rl_data *data, char *buf, size_t bufsize)
 {
-	char *bufptr = buf;
-
 	assert(buf != NULL);
 	assert(bufsize > 0);
 	assert(data != NULL);
@@ -36,6 +60,7 @@ readline(struct rl_data *data, char *buf, size_t bufsize)
 	assert(data->blen > 0);
 	assert(data->blen < (ssize_t)data->bcap);
 
+	char *bufptr = buf;
 
 	while(--bufsize > 1) { /* We return the \n as well, unlike K&R */
 		if (data->bptr - data->buf >= data->blen) {
@@ -76,8 +101,6 @@ readline_init(struct rl_data *data, int fd, size_t buflen, void *buf)
 		}
 		data->allocated = 1;
 	}
-
-	memset(data->buf, 0, data->bcap);
 
 	data->bptr = data->buf;
 	data->bcap = buflen;
@@ -147,40 +170,35 @@ parse_date(const char *str,
 int
 main(void)
 {
-	char buf[2][BUFSIZE]; /* Buffers for input and output */
-	char line[500]; /* Buffer for each line. */
-	unsigned int year, month, day;
-	FILE *out = NULL;
 	int rc = 0;
-	ssize_t linelength = 0;
-	size_t linecount = 0;
-	Parser parser = NULL;
-	struct raw_record rec;
-	struct rl_data rl_data;
-
+	char buf[2][BUFSIZE]; /* Buffers for input and output */
+	FILE *out = NULL;
 	if (!(out = fopen("./data/log", "ab"))) {
 		printf("Failed to open log FILE.\n");
 		rc = 1;
 		goto fail_fopen;
 	}
+	setvbuf(out, buf[1], _IOFBF, BUFSIZE);
 
+	struct rl_data rl_data;
 	if ((rc = readline_init(&rl_data, 0, BUFSIZE, buf[0]))) {
 		goto fail_readline_init;
 	}
 
-	setvbuf(out, buf[1], _IOFBF, BUFSIZE);
-
+	char line[500];
 	if (readline(&rl_data, line, BUFSIZE) != 11) {
 		/* Our date-format is fixed-length 11. */
 		printf("Failed to read date line: %s\n", line);
 		goto fail_get_date;
 	}
 
+	unsigned int year, month, day;
 	if (parse_date(line, &year, &month, &day)) {
 		printf("Bad line: %s\n", line);
 		goto fail_parse_date;
 	}
 
+	Parser parser = NULL;
 	parser = parser_factory(year, month, day);
 	if (readline(&rl_data, line, BUFSIZE) < 0) { /* Skip trailing hdr line. */
 		printf("Bad header: %s\n", line);
@@ -194,8 +212,12 @@ main(void)
 
 	assert(parser != NULL);
 
+	size_t linecount = 1; /* We skipped the header, remember. */
+	ssize_t linelength = 0;
+
 	/* Read line by line to ease parsing complexity. */
 	while ((linelength = readline(&rl_data, line, BUFSIZE)) >= 0) {
+		struct raw_record rec;
 		switch(parser(line, &rec)) {
 		case 0:
 			fwrite(&rec, sizeof(rec), 1, out);
