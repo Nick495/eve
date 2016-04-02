@@ -1,20 +1,20 @@
 #!/bin/sh
 
-mkfifo ./lol.pipe
+#mkfifo ./lol.pipe
 
-time ./test < ./lol.pipe >log.txt &
+#time ./test < ./lol.pipe >log.txt &
 #iprofiler -systemtrace ./test < ./lol.pipe >log.txt &
 
 # Redirecting 3 to pipe keeps the pipe open over multiple iterations through
 # the loop, as opposed to closing it each time.
 
 # open the pipe for writing
-exec 3>./lol.pipe
+#exec 3>./lol.pipe
 
 # For use with the external hard drive.
 #for item in $( find -E /Volumes/Backup/2* -type f -regex '.*\.dump\.gz' )
 for item in \
-    $( find -E /Users/nick/Downloads/dumps/2* -type f -regex '.*\.dump' )
+    $( find -E /Users/nick/Downloads/dumps/2* -type f -regex '.*\.dump.gz' )
 #for item in $( find -E /Volumes/Backup/2016/ -type f -regex '.*\.dump\.gz' )
 do
 	date=$( echo $item | rev | cut -c 9-18 | rev )
@@ -23,7 +23,8 @@ do
 	# The following form has no monitoring, but is faster as a result. We
 	# can use 'progress' to monitor it.
 	echo "Processing - ${date}"
-	( echo ${date}; gunzip -c ${item} ) >&3
+	#( echo ${date}; gunzip -c ${item} ) >&3
+	( echo ${date}; gunzip -c ${item} ) | ./test >> ./log.txt
 
 	# Test with decompressed data
 	#date=$( echo $item | rev | cut -c 6-15 | rev )
