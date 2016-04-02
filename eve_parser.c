@@ -4,8 +4,6 @@
 #define SEC_PER_HOUR 3600
 #define SEC_PER_MIN 60
 
-#include <stdio.h>
-
 /* Fast converter between years and Epoch normalized Julian Days, in seconds */
 static uint32_t
 ejday(unsigned int year, unsigned int month, unsigned int day)
@@ -45,6 +43,20 @@ pt_to_utc(const uint32_t pacificTime)
 	}
 }
 
+static uint64_t
+parse_uint64(const char **s)
+{
+	assert(s != NULL);
+
+	uint64_t val = 0;
+	while (isdigit(**s)) {
+		val = val * 10 + (unsigned int)**s - '0';
+		*s += 1;
+	}
+
+	return val;
+}
+
 /* Returns -2 on failure. */
 static int8_t
 range_to_byte(unsigned int range)
@@ -68,42 +80,16 @@ range_to_byte(unsigned int range)
 	}
 }
 
-static void
-skip_to_num(const char **s)
-{
-	const char *str = *s;
-
-	while (!isdigit(*str)) {
-		str++;
-	}
-
-	*s = str;
-	return;
-}
-
-static uint64_t
-parse_uint64(const char **s)
-{
-	assert(s != NULL);
-
-	const char *str = *s;
-
-	uint64_t val = 0;
-	while (isdigit(*str)) {
-		val = val * 10 + (uint64_t)*str++ - '0'; /* Assume base 10 */
-	}
-
-	*s = str;
-
-	return val;
-}
-
 static int8_t
 parse_range(const char **s)
 {
 	assert(s != NULL);
 
 	if (**s == '-') {
+		*s += 1;
+		while (isdigit(**s)) {
+			*s += 1;
+		}
 		return -1;
 	}
 
@@ -125,8 +111,7 @@ parse_datetime(const char **s)
 	val += (uint32_t)parse_uint64(s) * SEC_PER_MIN;
 	val += (uint32_t)parse_uint64(s);
 
-	/* No trailing seconds, we're done. */
-	if (**s != '.') {
+	if (**s != '.') { /* No trailing seconds, we're done. */
 		return val;
 	}
 
@@ -155,19 +140,15 @@ parser(const char *str)
 
 	rec.bid = 3; /* Catch bad input */
 
-	skip_to_num(&str);
-	rec.orderID = parse_uint64(&str);
-	str += 3;
-	rec.regionID = (uint32_t)parse_uint64(&str);
-	str += 3;
-	rec.systemID = (uint32_t)parse_uint64(&str);
-	str += 3;
-	rec.stationID = (uint32_t)parse_uint64(&str);
-	str += 3;
-	rec.typeID = (uint32_t)parse_uint64(&str);
-	str += 3;
-	rec.bid = (uint8_t)parse_uint64(&str);
-	str += 3;
+	if (*str == '"') {
+		str++;
+	}
+	rec.orderID = parse_uint64(&str); str += 3;
+	rec.regionID = (uint32_t)parse_uint64(&str); str += 3;
+	rec.systemID = (uint32_t)parse_uint64(&str); str += 3;
+	rec.stationID = (uint32_t)parse_uint64(&str); str += 3;
+	rec.typeID = (uint32_t)parse_uint64(&str); str += 3;
+	rec.bid = (uint8_t)parse_uint64(&str); str += 3;
 	rec.price = parse_uint64(&str) * 100;
 	if (*str == '.') { /* Cents & cent field are optional */
 		str++;
@@ -176,15 +157,11 @@ parser(const char *str)
 			rec.price += (uint32_t)(*str++ - '0');
 		}
 	}
-	skip_to_num(&str);
-	rec.volMin = (uint32_t)parse_uint64(&str);
 	str += 3;
-	rec.volRem = (uint32_t)parse_uint64(&str);
-	str += 3;
-	rec.volEnt = (uint32_t)parse_uint64(&str);
-	str += 3;
-	rec.issued = parse_datetime(&str);
-	str += 3;
+	rec.volMin = (uint32_t)parse_uint64(&str); str += 3;
+	rec.volRem = (uint32_t)parse_uint64(&str); str += 3;
+	rec.volEnt = (uint32_t)parse_uint64(&str); str += 3;
+	rec.issued = parse_datetime(&str); str += 3;
 	rec.duration = (uint16_t)parse_uint64(&str); /* Day(s) */
 	/* There's an hour, min, and sec field that's never used, so skip. */
 	parse_uint64(&str); /* Hour */
@@ -196,12 +173,10 @@ parser(const char *str)
 	}
 	str += 3;
 
-	/* Special since range has negatives. */
-	rec.range = parse_range(&str);
+	rec.range = parse_range(&str); /* Special since range has negatives. */
 	str += 3;
 
-	rec.reportedby = parse_uint64(&str);
-	str += 3;
+	rec.reportedby = parse_uint64(&str); str += 3;
 
 	/* Year, month, day again */
 	rec.rtime = parse_datetime(&str);
@@ -224,12 +199,7 @@ has_badval(const struct raw_record *rec)
 	return 0;
 }
 
-/*
- * Historical caveats: Buy order ranges incorrect, and time in Pacific.
- * There's no specifier in C89 for int8_t, so we get some compiler warnings
- * with %u. In C99 we'd use %hhu.
- *
-*/
+/* Check formats.txt for specifics of each format. */
 int
 parse_pt_bo(const char *str, struct raw_record *rec)
 {
@@ -241,7 +211,7 @@ parse_pt_bo(const char *str, struct raw_record *rec)
 	/* Buy order ranges are incorrect for this period. */
 	/* If it's a buy order (bid) then estimate the range as the smallest.*/
 	if (rec->bid == 1) {
-		rec->range = range_to_byte(-1);
+		rec->range = -1;
 	}
 
 	/* Convert pacific time stamps to UTC. */
@@ -251,7 +221,6 @@ parse_pt_bo(const char *str, struct raw_record *rec)
 	return has_badval(rec);
 }
 
-/* Historical caveat: Time in Pacific. (Buy order ranges now correct) */
 int
 parse_pt(const char *str, struct raw_record *rec)
 {
@@ -267,7 +236,6 @@ parse_pt(const char *str, struct raw_record *rec)
 	return has_badval(rec);
 }
 
-/* Historical caveat: Switch to UTC. */
 int
 parse(const char *str, struct raw_record *rec)
 {
