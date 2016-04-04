@@ -1,19 +1,16 @@
 TODO:
-	Rather than log rotating, we'll just do loads of each directory, which can
-	be done in a few hours reasonably. (My prediction is that 2012, which is
-	something like 111GB will take about 11 hours. So that's about 10G/hr,
-	with (high) compression, which isn't terrible.)
-
-	Now what we need to do is add a function to convert a bunch of struct
-	raw_records to a struct of arrays of their constituent elements (translate
-	between row-major storage and column-major storage for compression ratio
-	and aggregation performance.)
-
-	Once we have those arrays it will be trivial to compress them (just like
-	char * arrays).
-
-	Endian-independent serialization would have to occur before compression.
-
 	Bit arrays are a major pain in the ass to persist, so we'll just use byte
 	arrays and take the hit of an (at most 27 byte) header (for lz4) per 4K
 	block (.659% overhead) for ease of use.
+
+	lz4 provides a nice LZ4_compress_destSize, which compresses as much data as
+	will fit in the dst buffer. Unfortunately, Our data is often larger than a
+	single char, so we'll have to do some magic to make sure that we don't have
+	half an integer in one block and half an integer in another.
+
+	In terms of the blocks themselves, I've decided upon a simple header scheme
+	of only having the number of elements in the block. Since our blocks are 4k
+	big, and the smallest possible element can take 1 bit, we need 15 bits per
+	block for a count. (Assuming each element reduces to 1 bit of output size).
+	Therefore, we'll reserve 2 bytes per block for a 16 bit count. That leaves
+	us 4094 bytes for payload.

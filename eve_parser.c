@@ -138,17 +138,18 @@ parser(const char *str)
 
 	assert(str != NULL);
 
+#define SKIPLEN 3 /* Our fields have a 3 character seperator */
 	rec.bid = 3; /* Catch bad input */
 
 	if (*str == '"') {
 		str++;
 	}
-	rec.orderID = parse_uint64(&str); str += 3;
-	rec.regionID = (uint32_t)parse_uint64(&str); str += 3;
-	rec.systemID = (uint32_t)parse_uint64(&str); str += 3;
-	rec.stationID = (uint32_t)parse_uint64(&str); str += 3;
-	rec.typeID = (uint32_t)parse_uint64(&str); str += 3;
-	rec.bid = (uint8_t)parse_uint64(&str); str += 3;
+	rec.orderID = parse_uint64(&str); str += SKIPLEN;
+	rec.regionID = (uint32_t)parse_uint64(&str); str += SKIPLEN;
+	rec.systemID = (uint32_t)parse_uint64(&str); str += SKIPLEN;
+	rec.stationID = (uint32_t)parse_uint64(&str); str += SKIPLEN;
+	rec.typeID = (uint32_t)parse_uint64(&str); str += SKIPLEN;
+	rec.bid = (uint8_t)parse_uint64(&str); str += SKIPLEN;
 	rec.price = parse_uint64(&str) * 100;
 	if (*str == '.') { /* Cents & cent field are optional */
 		str++;
@@ -157,11 +158,11 @@ parser(const char *str)
 			rec.price += (uint32_t)(*str++ - '0');
 		}
 	}
-	str += 3;
-	rec.volMin = (uint32_t)parse_uint64(&str); str += 3;
-	rec.volRem = (uint32_t)parse_uint64(&str); str += 3;
-	rec.volEnt = (uint32_t)parse_uint64(&str); str += 3;
-	rec.issued = parse_datetime(&str); str += 3;
+	str += SKIPLEN;
+	rec.volMin = (uint32_t)parse_uint64(&str); str += SKIPLEN;
+	rec.volRem = (uint32_t)parse_uint64(&str); str += SKIPLEN;
+	rec.volEnt = (uint32_t)parse_uint64(&str); str += SKIPLEN;
+	rec.issued = parse_datetime(&str); str += SKIPLEN;
 	rec.duration = (uint16_t)parse_uint64(&str); /* Day(s) */
 	/* There's an hour, min, and sec field that's never used, so skip. */
 	parse_uint64(&str); /* Hour */
@@ -171,12 +172,12 @@ parser(const char *str)
 		str++;
 		parse_uint64(&str); /* Handle fractional seconds. */
 	}
-	str += 3;
+	str += SKIPLEN;
 
 	rec.range = parse_range(&str); /* Special since range has negatives. */
-	str += 3;
+	str += SKIPLEN;
 
-	rec.reportedby = parse_uint64(&str); str += 3;
+	rec.reportedby = parse_uint64(&str); str += SKIPLEN;
 
 	/* Year, month, day again */
 	rec.rtime = parse_datetime(&str);
