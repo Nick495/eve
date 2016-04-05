@@ -27,7 +27,7 @@ readline(struct rl_data *data, char *buf, size_t bufcap)
 	assert(data != NULL);
 	assert(data->buf != NULL);
 	assert(data->blen > 0);
-	assert(data->blen < (ssize_t)data->bcap);
+	assert(data->blen <= (ssize_t)data->bcap);
 
 	char *bufptr = buf;
 
@@ -130,7 +130,7 @@ parse_date(const char *str, uint *year, uint *month, uint *day)
 #define PAGESIZE 16384
 #define HEADERSIZE 2
 struct queue {
-	char page[PAGESIZE];
+	char *page;
 	void *data;
 	/* use and cap are ints instead of size_t's because of lz4. */
 	int fd;
@@ -138,6 +138,7 @@ struct queue {
 	unsigned int dCap;
 	unsigned int eleSize;
 	unsigned int pUse;
+	unsigned int pSize;
 	unsigned int pEleCount;
 };
 
@@ -151,12 +152,19 @@ queue_init(struct queue *q, int fd, unsigned int size, unsigned int bufCount)
 	if ((q->data = malloc(size * bufCount)) == NULL) {
 		return 1;
 	}
+	if ((q->page = malloc(PAGESIZE)) == NULL) {
+		return 1;
+	}
 	q->fd = fd;
 	q->dUse = q->pEleCount = 0;
 	q->dCap = bufCount;
 	q->eleSize = size;
 	q->pUse = HEADERSIZE; /* Leave room for page header. */
+	q->pSize = PAGESIZE;
 	q->pEleCount = 0;
+
+	assert(q->pUse <= q->pSize);
+	assert(q->dUse < q->dCap);
 	return 0;
 }
 
@@ -164,20 +172,24 @@ static void
 queue_free(struct queue *q)
 {
 	free(q->data);
+	free(q->page);
 	return;
 }
 
 static int
 queue_write(struct queue *q)
 {
+	assert(q->pUse <= q->pSize);
+
 	/* Write header and page, then reset pUse */
 	q->page[0] = (char)(q->pEleCount << 8);
 	q->page[1] = (char)(q->pEleCount << 0);
 	/* Add error handling. */
-	write(q->fd, q->page, PAGESIZE);
+	write(q->fd, q->page, q->pSize);
 	q->pUse = HEADERSIZE;
 	q->pEleCount = 0;
 
+	assert(q->pUse <= q->pSize);
 	return 0;
 }
 
@@ -185,14 +197,28 @@ queue_write(struct queue *q)
 static int
 queue_compress(struct queue *q)
 {
+	const unsigned int lower_limit = 11; /* Comes from lz4, refactor. */
 	const unsigned int buffer_len = (q->dUse * q->eleSize);
 	int bytes_consumed = buffer_len; /* Try to fit all the bytes. */
 	uint16_t eleCount = 0;
 
-	int rc=LZ4_compress_destSize(q->data, q->page + q->pUse, &bytes_consumed,
-		PAGESIZE-2);
-	if (rc == 0) {
+	/* Bytes taken in page by LZ4 compression. */
+	int bytes_taken = LZ4_compress_destSize(q->data, q->page + q->pUse,
+		&bytes_consumed, q->pSize - q->pUse);
+
+	assert(q->pUse <= q->pSize);
+
+	if (bytes_taken == 0) {
 		return -1;
+	}
+
+	if (bytes_consumed < q->eleSize) {
+		/* Below, we try to estimate how much space we have to leave in the
+		 * buffer to ensure that we can keep compressing stuff. Sometimes
+		 * our estimate will be wrong, so we have to handle that case. */
+		queue_write(q);
+		assert(q->pUse < q->pSize);
+		return queue_compress(q);
 	}
 
 	if ((unsigned int)bytes_consumed % q->eleSize != 0) {
@@ -201,9 +227,9 @@ queue_compress(struct queue *q)
 		 * successfully compress.
 		*/
 		bytes_consumed -= bytes_consumed % q->eleSize;
-		rc = LZ4_compress_destSize(q->data,
-			q->page + q->pUse , &bytes_consumed, PAGESIZE - q->pUse);
-		if (rc == 0) {
+		bytes_taken = LZ4_compress_destSize(q->data,
+			q->page + q->pUse , &bytes_consumed, q->pSize - q->pUse);
+		if (bytes_taken == 0) {
 			return -1;
 		}
 	}
@@ -211,18 +237,15 @@ queue_compress(struct queue *q)
 	eleCount = (uint16_t)(bytes_consumed / q->eleSize);
 	q->pEleCount += eleCount;
 	q->dUse -= eleCount;
-	q->pUse += bytes_consumed;
+	q->pUse += bytes_taken;
 
-#if 0
-	if (PAGESIZE - q->pUse < lower_limit * 2) {/* Probably not enough space. */
-		/* Write header and page, then reset pUse */
+	if (q->pSize - q->pUse <= lower_limit) {
 		queue_write(q);
 	}
-#endif
-	queue_write(q);
 
 	memmove(q->data, (char *)q->data+bytes_consumed,buffer_len-bytes_consumed);
 
+	assert(q->pUse <= q->pSize);
 	return 0;
 }
 
@@ -243,7 +266,36 @@ queue_push(struct queue *q, void *data)
 }
 
 static int
-queue_arr_init(struct queue *q, struct raw_record rec, unsigned int bufsize,
+queue_commit(struct queue *q)
+{
+	if (q->dUse == 0 && q->pUse == 0) { /* All data has been flushed. */
+		return 0;
+	}
+
+	if (q->dUse == 0) { /* All data is in the compressed buffer. */
+		return queue_write(q);
+	}
+
+	/* Otherwise, we have data that needs to be compressed. */
+	if (q->pUse == q->pSize) {
+		if (queue_write(q)) {
+			return 1;
+		}
+	}
+	if (queue_compress(q)) {
+		return 1;
+	}
+	return queue_commit(q);
+}
+
+/* the *_arr_* functions are very long, but basically exist only to make
+ * main() shorter. Our Raw_Record struct has 15 members, and each one is
+ * sent to a different file (in column-store fashion). Therefore, we have to
+ * open 15 files and init 15 queues. When we push we push to all of them.
+ * It's quite laborious and perhaps there's a better method.
+*/
+static int
+queue_arr_init(struct queue *q, struct Raw_Record rec, unsigned int bufsize,
 	int *fds)
 {
 	int i = 0;
@@ -317,7 +369,7 @@ fail_queue_init:
 }
 
 static int
-queue_arr_push(struct queue *q, struct raw_record rec)
+queue_arr_push(struct queue *q, struct Raw_Record rec)
 {
 	int i = 0;
 	if (queue_push(q + i++, &rec.orderID)) {
@@ -384,6 +436,19 @@ queue_arr_push(struct queue *q, struct raw_record rec)
 }
 
 static int
+queue_arr_commit(struct queue *q)
+{
+	int i;
+	for (i = 0; i < 15; ++i) {
+		if (queue_commit(q + i)) {
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+static int
 fd_arr_init(int *fds)
 {
 	char buf[200];
@@ -398,14 +463,41 @@ fd_arr_init(int *fds)
 		strcat(buf, names[i]);
 		fds[i] = open(buf, O_WRONLY|O_APPEND|O_CREAT, 0644);
 		if (fds[i] < 0) {
-			while (i > 0) {
-				close(fds[i - 1]);
-			}
-			return 1;
+			goto fail_fds_open;
 		}
 	}
 
 	return 0;
+
+fail_fds_open:
+	while (i > 0) {
+		close(fds[i - 1]);
+	}
+
+	return 1;
+}
+
+/* Debug */
+void
+print_Raw_Record(struct Raw_Record *r)
+{
+	printf(" %llu ", r->orderID);
+	printf(" %u ", r->regionID);
+	printf(" %u ", r->systemID);
+	printf(" %u ", r->stationID);
+	printf(" %u ", r->typeID);
+	printf(" %u ", r->bid);
+	printf(" %llu ", r->price);
+	printf(" %u ", r->volMin);
+	printf(" %u ", r->volRem);
+	printf(" %u ", r->volEnt);
+	printf(" %u ", r->issued);
+	printf(" %u ", r->duration);
+	printf(" %u ", r->range);
+	printf(" %llu ", r->reportedby);
+	printf(" %u \n", r->rtime);
+
+	return;
 }
 
 int
@@ -417,7 +509,7 @@ main(void)
 	Parser parser;
 	struct rl_data rlData;
 	char line[500];
-	struct raw_record rec;
+	struct Raw_Record rec;
 	struct queue queues[15];
 	int fds[15];
 
@@ -469,12 +561,16 @@ main(void)
 			printf("Bad bid %u : %s\n", rec.bid, line);
 			break;
 		case 3:
-			printf("Bad range %u : %s\n", rec.range, line);
+			printf("Bad range : %s\n", line);
 			break;
 		default:
 			printf("Bad line  %s\n", line);
 			break;
 		}
+	}
+
+	if (queue_arr_commit(queues)) {
+		goto fail_queues_commit;
 	}
 
 	if (linelength == -1) {
@@ -494,21 +590,19 @@ main(void)
 	return 0;
 
 fail_badread:
+fail_queues_commit:
 fail_queue_arr_push:
 fail_baddate:
 fail_get_header:
 fail_parse_date:
 fail_get_date:
-	printf("Problem 1?\n");
 	readline_free(&rlData);
 fail_readline_init:
 	for (linelength = 0; linelength < 15; ++linelength) {
-		printf("Problem 2? : %zd\n", linelength);
 		queue_free(&(queues[linelength]));
 	}
 fail_queue_arr_init:
 	for (linelength = 0; linelength < 15; ++linelength) {
-		printf("Problem 3? : %zd\n", linelength);
 		close(fds[linelength]);
 	}
 fail_fd_arr_init:

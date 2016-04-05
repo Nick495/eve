@@ -6,7 +6,7 @@
 #include <stdint.h> /* uint*_t */
 #include <ctype.h>  /* isdigit() */
 
-struct raw_record {
+struct Raw_Record {
 	/*type | name | Position in input | Description. Ordered by size & pos*/
 	uint64_t	orderID;        /*  1 OrderID */
 	uint64_t	price;          /*  7 Price (.1 ISK increments) */
@@ -32,7 +32,7 @@ struct raw_record {
 	uint8_t		bid;			/* 6 1 = buy, 0 = sell. (bid, offer) */
 };
 
-typedef int (*Parser)(const char *str, struct raw_record *rec);
+typedef int (*Parser)(const char *str, struct Raw_Record *rec);
 
 Parser parser_factory(const uint32_t yr, const uint32_t mn, const uint32_t dy);
 

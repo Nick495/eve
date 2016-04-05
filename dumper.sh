@@ -13,9 +13,8 @@
 
 # For use with the external hard drive.
 #for item in $( find -E /Volumes/Backup/2* -type f -regex '.*\.dump\.gz' )
-for item in \
-    $( find -E /Users/nick/Downloads/dumps/2* -type f -regex '.*\.dump.gz' )
-#for item in $( find -E /Volumes/Backup/2016/ -type f -regex '.*\.dump\.gz' )
+# For updating
+for item in $( find -E ~/Downloads/dumps/new/ -type f -regex '.*\.dump\.gz' )
 do
 	date=$( echo $item | rev | cut -c 9-18 | rev )
 	size=$( gzip -l ${item} | sed '1d' | awk '{print $2}' )
@@ -26,10 +25,6 @@ do
 	#( echo ${date}; gunzip -c ${item} ) >&3
 	( echo ${date}; gunzip -c ${item} ) | ./test >> ./log.txt
 
-	# Test with decompressed data
-	#date=$( echo $item | rev | cut -c 6-15 | rev )
-	#echo "Processing - ${date}"
-	#( echo ${date}; cat ${item} ) >&3
 done
 
 # Close pipe.

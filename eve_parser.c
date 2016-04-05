@@ -101,27 +101,40 @@ parse_datetime(const char **s)
 {
 	assert(s != NULL);
 	uint32_t val = 0;
+	unsigned int year;
+	unsigned int month;
+	unsigned int days;
+	unsigned int fractionalSeconds;
 
-	/* Year, month, day */
-	val = ejday((unsigned int)parse_uint64(s),
-		(unsigned int)parse_uint64(s),
-		(unsigned int)parse_uint64(s));
+	/* 'YYYY-MM-DD ' is the format. */
+	/* Warning, there be dragons here. */
+	year =
+	((*s)[0]-'0')*1000 + ((*s)[1]-'0')*100 + ((*s)[2]-'0')*10 + ((*s)[3]-'0');
+	*s += 5;  /* Skip the '-' */
+	month = ((*s)[0] - '0') * 10 + ((*s)[1] - '0'); *s += 3; /* Skip '-' */
+	days = ((*s)[0] - '0') * 10 + ((*s)[1] - '0'); *s += 3; /* Skip ' ' */
 
-	val += (uint32_t)parse_uint64(s) * SEC_PER_HOUR;
-	val += (uint32_t)parse_uint64(s) * SEC_PER_MIN;
-	val += (uint32_t)parse_uint64(s);
+	/* Time format is HH:MM:SS(.S...) */
+	val = ejday(year, month, days);
+	/* 'HH:' */
+	val += (((*s)[0] - '0') * 10 + ((*s)[1] - '0')) * SEC_PER_HOUR; *s += 3;
+	val += (((*s)[0] - '0') * 10 + ((*s)[1] - '0')) * SEC_PER_MIN; *s += 3;
+	val += (((*s)[0] - '0') * 10 + ((*s)[1] - '0')); *s += 2; /* SS(.S...) */
 
-	if (**s != '.') { /* No trailing seconds, we're done. */
-		return val;
-	}
-
-	*s += 1;
-	if (isdigit(**s) && **s - '0' > 5) {
-		val++; /* We round time to the nearest second. */
+	if (**s == '.') { /* Trailing seconds are optional */
+		*s += 1;
+		fractionalSeconds = (uint32_t)(**s - '0') * 10; *s += 1;
+		if (isdigit(**s)) {
+			fractionalSeconds += (uint32_t)(**s - '0'); *s += 1;
+		}
 	}
 
 	while (isdigit(**s)) { /* Skip any trailing seconds. */
 		*s += 1;
+	}
+
+	if (fractionalSeconds > 50) { /* It's in tenths as opposed to ones */
+		val++;
 	}
 
 	return val;
@@ -131,10 +144,10 @@ parse_datetime(const char **s)
  * orderid, regionid, systemid, stationid, typeid, bid, price, volmin,
  * volrem, volent, issued, duration, range, reportedby, rtime
 */
-static struct raw_record
+static struct Raw_Record
 parser(const char *str)
 {
-	struct raw_record rec;
+	struct Raw_Record rec;
 
 	assert(str != NULL);
 
@@ -164,10 +177,13 @@ parser(const char *str)
 	rec.volEnt = (uint32_t)parse_uint64(&str); str += SKIPLEN;
 	rec.issued = parse_datetime(&str); str += SKIPLEN;
 	rec.duration = (uint16_t)parse_uint64(&str); /* Day(s) */
+	while (!isdigit(*str)) {
+		str++;
+	}
 	/* There's an hour, min, and sec field that's never used, so skip. */
-	parse_uint64(&str); /* Hour */
-	parse_uint64(&str); /* Min */
-	parse_uint64(&str); /* Sec  */
+	parse_uint64(&str); str++; /* Hour: */
+	parse_uint64(&str); str++; /* Min: */
+	parse_uint64(&str); /* Sec(.)  */
 	if (*str == '.') {
 		str++;
 		parse_uint64(&str); /* Handle fractional seconds. */
@@ -187,7 +203,7 @@ parser(const char *str)
 
 /* Returns 0 on success, type of bad value otherwise. */
 static int
-has_badval(const struct raw_record *rec)
+has_badval(const struct Raw_Record *rec)
 {
 	if (rec->issued > rec->rtime) {
 		return 1;
@@ -202,7 +218,7 @@ has_badval(const struct raw_record *rec)
 
 /* Check formats.txt for specifics of each format. */
 int
-parse_pt_bo(const char *str, struct raw_record *rec)
+parse_pt_bo(const char *str, struct Raw_Record *rec)
 {
 	assert(str != NULL);
 	assert(rec != NULL);
@@ -223,7 +239,7 @@ parse_pt_bo(const char *str, struct raw_record *rec)
 }
 
 int
-parse_pt(const char *str, struct raw_record *rec)
+parse_pt(const char *str, struct Raw_Record *rec)
 {
 	assert(str != NULL);
 	assert(rec != NULL);
@@ -238,7 +254,7 @@ parse_pt(const char *str, struct raw_record *rec)
 }
 
 int
-parse(const char *str, struct raw_record *rec)
+parse(const char *str, struct Raw_Record *rec)
 {
 	assert(str != NULL);
 	assert(rec != NULL);
