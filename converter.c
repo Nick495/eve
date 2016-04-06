@@ -41,16 +41,14 @@ readline(struct rl_data *data, char *buf, size_t bufcap)
 				return data->blen - 1;
 			}
 		}
-
 		if (*data->bptr == '\n') {
 			*bufptr++ = *data->bptr++;
 			break;
 		}
-
 		*bufptr++ = *data->bptr++;
 	}
-
 	*bufptr = '\0';
+
 	return bufptr - buf;
 }
 
@@ -61,21 +59,18 @@ readline_init(struct rl_data *data, int fd, void *buf, size_t bufcap)
 	assert(fd >= 0);
 	assert(bufcap > 0);
 
-	if (buf != NULL) { /* Allow user to specify their own buffer. */
-		data->buf = (char *)buf;
-		data->allocated = 0;
-	} else { /* Do it for them */
-		data->buf = malloc(bufcap);
-		if (!data->buf) {
+	if (buf == NULL) { /* Allow user to specify their own buffer. */
+		if (!(buf = malloc(bufcap))) {
 			return 1;
 		}
 		data->allocated = 1;
+	} else {
+		data->allocated = 0;
 	}
-
+	data->buf = (char *)buf;
 	data->bptr = data->buf;
 	data->bcap = bufcap;
 	data->fd = fd;
-
 	if ((data->blen = read(data->fd, data->buf, data->bcap)) == -1) {
 		return 2;
 	}

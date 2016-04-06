@@ -33,6 +33,7 @@ struct Raw_Record {
 };
 
 typedef int (*Parser)(const char *str, struct Raw_Record *rec);
+
 Parser
 parser_factory(const uint32_t yr, const uint32_t mn, const uint32_t dy);
 

@@ -14,9 +14,9 @@ struct queue {
 	char *page;
 	void *data;
 	int fd; /* use and cap are ints instead of size_t's because of lz4. */
+	unsigned int eleSize;
 	unsigned int dUse;
 	unsigned int dCap;
-	unsigned int eleSize;
 	unsigned int pUse;
 	unsigned int pSize;
 	unsigned int pEleCount;
