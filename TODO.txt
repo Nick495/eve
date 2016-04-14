@@ -14,3 +14,5 @@ TODO:
 	block for a count. (Assuming each element reduces to 1 bit of output size).
 	Therefore, we'll reserve 2 bytes per block for a 16 bit count. That leaves
 	us 4094 bytes for payload.
+
+	I'm just going to try to use LMDB and see how it works.

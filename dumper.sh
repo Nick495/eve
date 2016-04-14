@@ -23,7 +23,8 @@ do
 	# can use 'progress' to monitor it.
 	echo "Processing - ${date}"
 	#( echo ${date}; gunzip -c ${item} ) >&3
-	( echo ${date}; gunzip -c ${item} ) | ./test >> ./log.txt
+	#( echo ${date}; gunzip -c ${item} ) | ./test >> ./log.txt
+	( echo ${date}; gunzip -c ${item} ) | valgrind ./test
 
 done
 
