@@ -4,13 +4,26 @@
 #include <fcntl.h>	/* open() */
 #include <unistd.h>	/* close(), fork() */
 #include <string.h>	/* strlen() */
-#include <sys/wait.h> /* waitpid() */
+#include <sys/wait.h>	/* waitpid() */
 
 #include "lib/eve_parser.h"
 #include "lib/eve_txn.h"
 #include "lib/readline.h"
 #include "lib/lmdb/libraries/liblmdb/lmdb.h"
 #include "converter_lmdb.c"
+
+static int
+bad_date(unsigned int year, unsigned int month, unsigned int day)
+{
+	if (year < 2000 || year > 3000) {
+		return 1;
+	} else if (month < 1 || month > 12) {
+		return 1;
+	} else if (day < 1 || day > 31) {
+		return 1;
+	}
+	return 0;
+}
 
 typedef unsigned int uint;
 static int
@@ -30,84 +43,89 @@ parse_date(const char *str, uint *year, uint *month, uint *day)
 	*month = (uint)((str[5] - '0') * 10 + (str[6] - '0')); /* skip '-' */
 	*day = (uint)((str[8] - '0') * 10 + (str[9] - '0')); /* skip '-' */
 
-	if (*year < 2000 || *year > 3000 || *month < 1 || *month > 12
-		|| *day < 1 || *day > 31) {
-		return 2;
+	if (bad_date(*year, *month, *day)) {
+	    return 2;
 	}
-
 	return 0;
+}
+
+static void
+parse_handler(char *line, int outfd, eve_txn_parser parse_txn)
+{
+	struct eve_txn txn;
+	switch(parse_txn(line, &txn)) {
+	case 0:
+		write(outfd, &txn, sizeof(txn));
+		break;
+	case 1:
+		printf("Bad time (%u, %u) : %s\n", txn.issued,txn.rtime, line);
+		break;
+	case 2:
+		printf("Bad bid %u : %s\n", txn.bid, line);
+		break;
+	case 3:
+		printf("Bad range : %s\n", line);
+		break;
+	default:
+		printf("Bad input  %s\n", line);
+		break;
+	}
+	return;
 }
 
 static int
 eve_parser(int infd, int outfd)
 {
 #define BUFSIZE 16384
-	struct rl_data lineReader;
-	char inbuf[BUFSIZE];
-	char linebuf[500]; /* Must be larger than the size of every linebuf. */
+	char line[500]; /* Buffer for actual line. */
+	char inbuf[BUFSIZE] = {0}; /* Buffer for input() reading. */
+	struct rl_data ind;
 	unsigned int year, month, day;
-	eve_txn_parser parseline;
-	ssize_t linelength = 0;
-	struct eve_txn txn;
+	eve_txn_parser parse_txn;
+	int rc = 0;
 
-	if (readline_init(&lineReader, 0, inbuf, BUFSIZE)) {
-		goto fail_readline_init;
+	if (readline_init(&ind, infd, line, 500)) {
+		printf("Failed to initialize readline structure.\n");
+		return 1;
 	}
-	if (readline(&lineReader, linebuf, 500) != 11) { /* 'YYYY-MM-DD\n' = 11*/
-		printf("Failed to read date linebuf: %s\n", linebuf);
-		goto fail_get_date;
+	/* Read 'YYYY-MM-DD\n' (11 chars) line which tells us how to parse. */
+	if ((rc = readline(&ind, line, 500) < 11)) {
+		printf("Failed to read date inbuf.\n");
+		printf("DEBUG: %d\n", rc);
+		return 2;
 	}
-	if (parse_date(linebuf, &year, &month, &day)) {
-		printf("Bad linebuf: %s\n", linebuf);
-		goto fail_parse_date;
+	if (parse_date(inbuf, &year, &month, &day)) {
+		printf("Bad date: %s\n", inbuf);
+		return 3;
 	}
-	if ((parseline = eve_txn_parser_factory(year, month, day)) == NULL) {
+	if (!(parse_txn = eve_txn_parser_factory(year, month, day))) {
 		printf("Bad date: %u %u %u\n", year, month, day);
-		goto fail_baddate;
+		return 4;
 	}
-	if (readline(&lineReader, linebuf, 500) < 0) { /* Skip header line. */
-		printf("Bad header: %s\n", linebuf);
-		goto fail_get_header;
+	if (readline(&ind, line, 500) < 1) {
+		printf("Bad header line.\n");
+		return 5;
 	}
-
-	while ((linelength = readline(&lineReader, linebuf, 500)) >= 0) {
-		switch(parseline(linebuf, &txn)) {
-		case 0:
-			write(outfd, &txn, sizeof(txn));
-			break;
-		case 1:
-			printf("Bad time (%u, %u) : %s\n", txn.issued, txn.rtime, linebuf);
-			break;
-		case 2:
-			printf("Bad bid %u : %s\n", txn.bid, linebuf);
-			break;
-		case 3:
-			printf("Bad range : %s\n", linebuf);
-			break;
-		default:
-			printf("Bad linebuf  %s\n", linebuf);
-			break;
-		}
+	while (readline(&ind, line, 500) >= 0) {
+		parse_handler(line, outfd, parse_txn);
 	}
-
-	if (linelength == -1) {
+	if (readline_err(&ind) == 0) {
 		printf("Finished file: %u-%u-%u\n", year, month, day);
 	} else {
 		printf("Error reading: %u-%u-%u\n", year, month, day);
-		goto fail_badread;
+		return -1;
 	}
-
-	readline_free(&lineReader);
 	return 0;
+}
 
-fail_badread:
-fail_baddate:
-fail_get_header:
-fail_parse_date:
-fail_get_date:
-	readline_free(&lineReader);
-fail_readline_init:
-	return 1;
+static int
+sample_inserter(int infd)
+{
+	struct eve_txn txn;
+	while (read(infd, &txn, sizeof(txn)) == sizeof(txn)) {
+		print_eve_txn(&txn);
+	}
+	return 0;
 }
 
 int
@@ -120,7 +138,6 @@ main(void)
 		printf("Failed to make a pipe.\n");
 		goto fail_pipe;
 	}
-
 	switch(childpid = fork()) {
 	case -1:
 		printf("Failed to fork().\n");
@@ -128,12 +145,15 @@ main(void)
 		break;
 	case 0: /* child */
 		close(pipes[1]);
+#if 0
 		return lmdb_insert(pipes[0]);
+#endif
+		return sample_inserter(pipes[0]);
 	default: /* parent */
 		close(pipes[0]);
 		rc = eve_parser(1, pipes[1]); /* parse stdin */
 		close(pipes[1]);
-		waitpid(childpid, NULL, 0); /* Wait for (inserter) to complete. */
+		waitpid(childpid, NULL, 0);
 		return rc;
 	}
 
