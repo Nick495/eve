@@ -1,18 +1,40 @@
 TODO:
-	Bit arrays are a major pain in the ass to persist, so we'll just use byte
-	arrays and take the hit of an (at most 27 byte) header (for lz4) per 4K
-	block (.659% overhead) for ease of use.
+	Bit arrays are actually easy to persist, so we'll use them. (Since each
+	header has a count of elements, we only read those. The uninitialized
+	bits are therefore not a problem.)
 
-	lz4 provides a nice LZ4_compress_destSize, which compresses as much data as
-	will fit in the dst buffer. Unfortunately, Our data is often larger than a
-	single char, so we'll have to do some magic to make sure that we don't have
-	half an integer in one block and half an integer in another.
+	lz4 provides a nice LZ4_compress_destSize, which compresses as much
+	data as will fit in the dst buffer. Unfortunately, Our data is often
+	larger than a single char, so we'll have to do some magic to make sure
+	that we don't have half an integer in one block and half an integer in
+	another. (It's not that difficult actually).
+	(Note that LZ4_compress_destSize solves the problem of figuring
+	out how many elements to compress in O(1) as opposed to the O(log n)
+	binary search that you'd otherwise be stuck with. Very nice indeed.)
 
-	In terms of the blocks themselves, I've decided upon a simple header scheme
-	of only having the number of elements in the block. Since our blocks are 4k
-	big, and the smallest possible element can take 1 bit, we need 15 bits per
-	block for a count. (Assuming each element reduces to 1 bit of output size).
-	Therefore, we'll reserve 2 bytes per block for a 16 bit count. That leaves
-	us 4094 bytes for payload.
+	The block header will end up being bigger unfortunately, but a 16 bit
+	count isn't a bad start. If we want this database to be general, we'll
+	need a type and a size field as well. The J language gives some hints
+	as to how to do this. The type field looks like it can be 1 byte, and
+	size another 16 bits or so. (Since we could have page sized elements).
+	That gives us a 2 + 2 + 1 = 5 byte header, over a 4k page size which is
+	a .1220% overhead.
 
-	I'm just going to try to use LMDB and see how it works.
+	The biggest pain point at the current time is handling integers of
+	different widths. One approach is to encode every integer as variable
+	length, and to do all math on that encoded integer. This has certain
+	advantages, but I'd rather avoid forcing an encoding on users if
+	possible.
+
+	The alternative seems to be a chorus of uintXX_t func versions,
+	however, which perhaps sucks more. I _really_ don't want to do that.
+
+	In terms of functionality with the database, I want to allow people
+	to throw in arbitrary function pointers, so that the database only
+	has to be able to do INSERT, SELECT, and DELETE. (Update = INSERT +
+	DELETE, per usual). Then we simply apply the function pointers on the
+	finalized dataset, before returning it or not at the caller's choice.
+
+	However, it could be problematic having that interact with
+	materialization. Oh well, we have a ways to go before we get to that
+	point.
