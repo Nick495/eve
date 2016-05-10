@@ -17,7 +17,7 @@ print_eve_txn(struct eve_txn *t)
 	printf(" %u ", t->volEnt);
 	printf(" %u ", t->issued);
 	printf(" %u ", t->duration);
-	printf(" %u ", t->range);
+	printf(" %d ", t->range);
 	printf(" %llu ", t->reportedby);
 	printf(" %u \n", t->rtime);
 

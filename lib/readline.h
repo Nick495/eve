@@ -12,8 +12,7 @@ struct rl_data {
 	ssize_t blen;	/* number of valid bytes in buf. */
 	size_t bcap;	/* capacity of buf. */
 	int fd;		/* input file descriptor. */
-	int allocated;	/* flag, whether or not buf was malloc()ed */
-	int ec;		/* error code. */
+	int allocated;	/* internal flag, whether or not buf was malloc()ed. */
 };
 
 int
@@ -24,8 +23,5 @@ readline_free(struct rl_data *data);
 
 ssize_t
 readline(struct rl_data *data, char *buf, size_t bufcap);
-
-int
-readline_err(struct rl_data *data);
 
 #endif

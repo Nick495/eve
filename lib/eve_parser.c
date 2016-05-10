@@ -36,8 +36,7 @@ pt_to_utc(const uint32_t pacificTime)
 	}
 }
 
-#if 0
-/*Parses a uint64_t decimal value from a string. TODO:Investigate pointer use*/
+/* Parses a decimal value from a string TODO:Investigate pointer use */
 static uint64_t
 parse_uint64(const char **s)
 {
@@ -48,57 +47,6 @@ parse_uint64(const char **s)
 	const char *str = *s;
 	while (isdigit(*str)) {
 		val = val * 10 + (unsigned int)(*str++ - '0');
-	}
-	*s = str;
-
-	return val;
-}
-#endif
-
-/* Second attempt from Andrei Alexandrescu  */
-static uint64_t
-parse_uint64(const char **s)
-{
-	assert(s != NULL);
-	assert(*s != NULL);
-
-	uint64_t val = 0;
-	const uint_fast64_t pow10[20] = { /* Note: log(2^64 - 1) = 19.265. */
-		10000000000000000000,
-		1000000000000000000,
-		100000000000000000,
-		10000000000000000,
-		1000000000000000,
-		100000000000000,
-		10000000000000,
-		1000000000000,
-		100000000000,
-		10000000000,
-		1000000000,
-		100000000,
-		10000000,
-		1000000,
-		100000,
-		10000,
-		1000,
-		100,
-		10,
-		1
-	};
-	/*
-	 * Numbers are given in big endian form. So we start at the lowest
-	 * possible exponent value, and then back up until we're at the
-	 * appropriate exponent.
-	*/
-	const char *str = *s;
-	while (isdigit(*str)) {
-		str++;
-	}
-	unsigned int i = sizeof(pow10) / sizeof(pow10[0]) - (str - *s);
-
-	str = *s;
-	while (isdigit(*str)) {
-		val += pow10[i++] * (unsigned int)(*str++ - '0');
 	}
 	*s = str;
 

@@ -9,8 +9,6 @@
 #include "lib/eve_parser.h"
 #include "lib/eve_txn.h"
 #include "lib/readline.h"
-#include "lib/lmdb/libraries/liblmdb/lmdb.h"
-#include "converter_lmdb.c"
 
 static int
 bad_date(unsigned int year, unsigned int month, unsigned int day)
@@ -38,7 +36,7 @@ parse_date(const char *str, uint *year, uint *month, uint *day)
 		return 1; /* Valid datestrings have the format 'YYYY-MM-DD' */
 	}
 
-	*year = (uint) ((str[0] - '0') * 1000 + (str[1] - '0') * 100
+	*year = (uint)((str[0] - '0') * 1000 + (str[1] - '0') * 100
 		+ (str[2] - '0') * 10 + (str[3] - '0'));
 	*month = (uint)((str[5] - '0') * 10 + (str[6] - '0')); /* skip '-' */
 	*day = (uint)((str[8] - '0') * 10 + (str[9] - '0')); /* skip '-' */
@@ -84,21 +82,20 @@ eve_parser(int infd, int outfd)
 	eve_txn_parser parse_txn;
 	int rc = 0;
 
-	if (readline_init(&ind, infd, line, 500)) {
+	if (readline_init(&ind, infd, inbuf, BUFSIZE)) {
 		printf("Failed to initialize readline structure.\n");
 		return 1;
 	}
 	/* Read 'YYYY-MM-DD\n' (11 chars) line which tells us how to parse. */
 	if ((rc = readline(&ind, line, 500) < 11)) {
 		printf("Failed to read date inbuf.\n");
-		printf("DEBUG: %d\n", rc);
 		return 2;
 	}
-	if (parse_date(inbuf, &year, &month, &day)) {
-		printf("Bad date: %s\n", inbuf);
+	if (parse_date(line, &year, &month, &day)) {
+		printf("Bad date line.\n");
 		return 3;
 	}
-	if (!(parse_txn = eve_txn_parser_factory(year, month, day))) {
+	if ((parse_txn = eve_txn_parser_factory(year, month, day)) == NULL) {
 		printf("Bad date: %u %u %u\n", year, month, day);
 		return 4;
 	}
@@ -142,16 +139,12 @@ main(void)
 	case -1:
 		printf("Failed to fork().\n");
 		goto fail_fork;
-		break;
 	case 0: /* child */
 		close(pipes[1]);
-#if 0
-		return lmdb_insert(pipes[0]);
-#endif
 		return sample_inserter(pipes[0]);
 	default: /* parent */
 		close(pipes[0]);
-		rc = eve_parser(1, pipes[1]); /* parse stdin */
+		rc = eve_parser(STDIN_FILENO, pipes[1]); /* parse stdin */
 		close(pipes[1]);
 		waitpid(childpid, NULL, 0);
 		return rc;

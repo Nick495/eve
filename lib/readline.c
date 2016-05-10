@@ -1,5 +1,6 @@
-#include "readline.h" /* read(), malloc(), free() */
+#include "readline.h"	/* read(), malloc(), free() */
 
+/* NOTE: BUFCAP must be greater than or equal to the length of the lines */
 int
 readline_init(struct rl_data *data, int fd, void *buf, size_t bufcap)
 {
@@ -44,6 +45,13 @@ readline_free(struct rl_data *data)
 	return;
 }
 
+/* TODO: Replace this API with one which returns a pointer to the buffer
+ * and takes in a pointer to the length which it returns. Then we can just
+ * read more bytes into the buffer until we can strchr() a newline or we
+ * run out of space. If we run out of space we return an error code for size.
+ *
+ * The reduction in copies should be a significant source of speedup.
+*/
 ssize_t
 readline(struct rl_data *data, char *buf, size_t bufcap)
 {
@@ -59,7 +67,7 @@ readline(struct rl_data *data, char *buf, size_t bufcap)
 		if (data->bptr - data->buf >= data->blen) {
 			data->blen = read(data->fd, data->buf, data->bcap);
 			data->bptr = data->buf;
-			/*0 is a valid return size, so shift error codes down*/
+			/* 0 is a valid return size shift error codes down */
 			if (data->blen == 0 || data->blen == -1) {
 				data->ec = data->blen;
 				return -1;
@@ -73,10 +81,4 @@ readline(struct rl_data *data, char *buf, size_t bufcap)
 	}
 	*bufptr = '\0';
 	return (bufptr - buf);
-}
-
-int
-readline_err(struct rl_data *data)
-{
-	return data->ec;
 }
