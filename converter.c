@@ -13,7 +13,7 @@
 static int
 bad_date(unsigned int year, unsigned int month, unsigned int day)
 {
-	if (year < 2000 || year > 3000) {
+	if (year < 2006 || year > 3000) {
 		return 1;
 	} else if (month < 1 || month > 12) {
 		return 1;
@@ -25,26 +25,39 @@ bad_date(unsigned int year, unsigned int month, unsigned int day)
 
 typedef unsigned int uint;
 static int
-parse_date(const char *str, uint *year, uint *month, uint *day)
+parse_date(const char* const str, uint *year, uint *month, uint *day)
 {
-	assert(str != NULL);
-	assert(year != NULL);
-	assert(month != NULL);
-	assert(day != NULL);
-
-	if (str[4] != '-' || str[7] != '-' || str[11] != '\0') {
-		return 1; /* Valid datestrings have the format 'YYYY-MM-DD' */
+	{
+		/* Preconditions */
+		assert(str != NULL);
+		assert(year != NULL);
+		assert(month != NULL);
+		assert(day != NULL);
 	}
-
-	*year = (uint)((str[0] - '0') * 1000 + (str[1] - '0') * 100
-		+ (str[2] - '0') * 10 + (str[3] - '0'));
-	*month = (uint)((str[5] - '0') * 10 + (str[6] - '0')); /* skip '-' */
-	*day = (uint)((str[8] - '0') * 10 + (str[9] - '0')); /* skip '-' */
-
-	if (bad_date(*year, *month, *day)) {
-	    return 2;
+	{
+		/* Input format validation: */
+		/* Confirm that datestring has the format 'YYYY-MM-DD' */
+		if (str[4] != '-' || str[7] != '-' || str[11] != '\0') {
+			return 1;
+		}
 	}
-	return 0;
+	{
+		/* Value parsing: */
+		unsigned int i;
+		unsigned int offsets[4] = {1000, 100, 10, 1};
+		const char* s = str;
+		*year = *month = *day = 0;
+		for (i = 0; i < 4; ++i) { /* Year is 4 digits */
+			*year += (*s++ - '0') + offsets[i];
+		}
+		for (i = 0; i < 2; ++i) {
+			*month += (*s++ - '0') + offsets[i];
+		}
+		for (i = 0; i < 2; ++i) {
+			*day += (*s++ - '0') + offsets[i];
+		}
+	}
+	return bad_date(*year, *month, *day) ? 2 : 0;
 }
 
 static void
@@ -56,7 +69,7 @@ parse_handler(char *line, int outfd, eve_txn_parser parse_txn)
 		write(outfd, &txn, sizeof(txn));
 		break;
 	case 1:
-		printf("Bad time (%u, %u) : %s\n", txn.issued,txn.rtime, line);
+		printf("Bad time (%u, %u) : %s\n", txn.issued, txn.rtime,line);
 		break;
 	case 2:
 		printf("Bad bid %u : %s\n", txn.bid, line);
@@ -72,45 +85,49 @@ parse_handler(char *line, int outfd, eve_txn_parser parse_txn)
 }
 
 static int
-eve_parser(int infd, int outfd)
+eve_parser(const int infd, const int outfd)
 {
-#define BUFSIZE 16384
-	char line[500]; /* Buffer for actual line. */
-	char inbuf[BUFSIZE] = {0}; /* Buffer for input() reading. */
+	const unsigned int BUFSIZE = 16384;
+	char inbuf[BUFSIZE]; /* Buffer for input() reading. */
+	const unsigned int len = 11; /* 'YYYY-MM-DD\n' is 11 chars. */
+	char datestr[len + 1]; /* and null */
 	struct rl_data ind;
-	unsigned int year, month, day;
 	eve_txn_parser parse_txn;
-	int rc = 0;
 
 	if (readline_init(&ind, infd, inbuf, BUFSIZE)) {
 		printf("Failed to initialize readline structure.\n");
 		return 1;
 	}
-	/* Read 'YYYY-MM-DD\n' (11 chars) line which tells us how to parse. */
-	if ((rc = readline(&ind, line, 500) < 11)) {
-		printf("Failed to read date inbuf.\n");
-		return 2;
+	{ /* Initialize the parse_txn pointer */
+		unsigned int year, mon, day;
+		if (readline(&ind, datestr, 12) < len) {
+			printf("Failed to read date inbuf.\n");
+			return 2;
+		}
+		if (parse_date(datestr, &year, &mon, &day)) {
+			printf("Bad date line.\n");
+			return 3;
+		}
+		if ((parse_txn=eve_txn_parser_factory(year, mon, day))==NULL) {
+			printf("Bad date: %u %u %u\n", year, mon, day);
+			return 4;
+		}
 	}
-	if (parse_date(line, &year, &month, &day)) {
-		printf("Bad date line.\n");
-		return 3;
-	}
-	if ((parse_txn = eve_txn_parser_factory(year, month, day)) == NULL) {
-		printf("Bad date: %u %u %u\n", year, month, day);
-		return 4;
-	}
-	if (readline(&ind, line, 500) < 1) {
-		printf("Bad header line.\n");
-		return 5;
-	}
-	while (readline(&ind, line, 500) >= 0) {
-		parse_handler(line, outfd, parse_txn);
-	}
-	if (readline_err(&ind) == 0) {
-		printf("Finished file: %u-%u-%u\n", year, month, day);
-	} else {
-		printf("Error reading: %u-%u-%u\n", year, month, day);
-		return -1;
+	{ /* Gets rid of the header line and parses each transaction. */
+		char line[500];
+		if (readline(&ind, line, 500) < 1) { /* Get rid of header. */
+			printf("Bad header line.\n");
+			return 5;
+		}
+		while (readline(&ind, line, 500) >= 0) {
+			parse_handler(line, outfd, parse_txn);
+		}
+		if (readline_err(&ind) == 0) {
+			printf("Finished file: %s\n", datestr);
+		} else {
+			printf("Error reading: %s\n", datestr);
+			return -1;
+		}
 	}
 	return 0;
 }
@@ -119,8 +136,12 @@ static int
 sample_inserter(int infd)
 {
 	struct eve_txn txn;
-	while (read(infd, &txn, sizeof(txn)) == sizeof(txn)) {
+	int rdval;
+	while ((rdval = read(infd, &txn, sizeof(txn))) == sizeof(txn)) {
 		print_eve_txn(&txn);
+	}
+	if (rdval == -1) {
+		fprintf(stderr, "Failed to read().\n");
 	}
 	return 0;
 }
