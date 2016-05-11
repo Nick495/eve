@@ -3,10 +3,11 @@
 int
 readline_init(struct rl_data *data, int fd, void *buf, size_t bufcap)
 {
-	assert(data != NULL);
-	assert(fd >= 0);
-	assert(bufcap > 0);
-
+	{ /* Preconditions */
+		assert(data != NULL);
+		assert(fd >= 0);
+		assert(bufcap > 0);
+	}
 	if (buf == NULL) { /* Allow user to specify their own buffer. */
 		data->allocated = 1;
 		buf = malloc(bufcap);
@@ -22,25 +23,25 @@ readline_init(struct rl_data *data, int fd, void *buf, size_t bufcap)
 	data->fd = fd;
 	data->blen = 0;
 	data->ec = 0;
-
-	assert(data->buf != NULL);
-	assert(data->fd >= 0);
-	assert(data->bcap > 0);
-
+	{ /* Postconditions */
+		assert(data->buf != NULL);
+		assert(data->fd >= 0);
+		assert(data->bcap > 0);
+	}
 	return 0;
 }
 
 void
 readline_free(struct rl_data *data)
 {
-	assert(data != NULL);
-
+	{ /* Preconditions */
+		assert(data != NULL);
+	}
 	if (data->allocated) {
 		free(data->buf);
 	}
 	data->bptr = data->buf = NULL;
 	data->blen = data->bcap = data->fd = 0;
-
 	return;
 }
 
@@ -48,7 +49,7 @@ ssize_t
 readline(struct rl_data *data, char *buf, size_t bufcap)
 {
 	char *bufptr = buf;
-	{
+	{ /* Preconditions */
 		assert(buf != NULL);
 		assert(bufcap > 0);
 		assert(data != NULL);
