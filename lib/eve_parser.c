@@ -96,6 +96,40 @@ parse_range(const char **s)
 	return -1;
 }
 
+/* Parse HH:MM:SS(.S...) time format */
+static uint32_t
+parse_timestamp(const char **s)
+{
+	unsigned int powers[2] = {10, 1};
+	unsigned int hour = 0, minute = 0, second = 0, i;
+	const char *str = *s;
+	for (i = 0; i < 2; ++i) {
+		hour += (*str++ - '0') * powers[i];
+	}
+	str++; /* Skip ':' */
+	for (i = 0; i < 2; ++i) {
+		minute += (*str++ - '0') * powers[i];
+	}
+	str++; /* Skip second ':' */
+	for (i = 0; i < 2; ++i) {
+		second += (*str++ - '0') * powers[i];
+	}
+	if (*str == '.') { /* Trailing seconds are optional */
+		str++; /* Skip '.' */
+		if ((*str++ - '0') >= 5) {
+			/* Now we're looking at tenths of seconds. If that
+			 * tenth is >= 5 (i.e., >= .5 of a second), then
+			 * increment to round to the nearest second.
+			*/
+			second++;
+		}
+	}
+	while (isdigit(*str)) { /* Skip any trailing semi-seconds. */
+		str++;
+	}
+	return hour * HR_SECONDS + minute * MIN_SECONDS + second;
+}
+
 static uint32_t
 parse_datetime(const char **s)
 {
@@ -123,39 +157,7 @@ parse_datetime(const char **s)
 		val = ejday(year, month, day);
 		*s = str;
 	}
-	{ /* Parse HH:MM:SS(.S...) time format */
-		unsigned int powers[2] = {10, 1};
-		unsigned int tmp, i;
-		const char *str = *s;
-		for (i = 0, tmp = 0; i < 2; ++i) {
-			tmp += (*str++ - '0') * powers[i];
-		}
-		val += tmp * HR_SECONDS;
-		str++; /* Skip ':' */
-		for (i = 0, tmp = 0; i < 2; ++i) {
-			tmp += (*str++ - '0') * powers[i];
-		}
-		val += tmp * MIN_SECONDS;
-		str++; /* Skip second ':' */
-		for (i = 0, tmp = 0; i < 2; ++i) {
-			tmp += (*str++ - '0') * powers[i];
-		}
-		if (*str == '.') { /* Trailing seconds are optional */
-			str++; /* Skip '.' */
-			if ((*str++ - '0') >= 5) {
-				/* Now we're looking at tenths of seconds.
-				 * If that tenth is >= 5 (i.e., >= .5 of a
-				 * second, increment in order to round to the
-				 * nearest second)
-				*/
-				tmp++;
-			}
-		}
-		val += tmp;
-		while (isdigit(*str)) { /* Skip any trailing semi-seconds. */
-			str++;
-		}
-	}
+	val += parse_timestamp(s);
 	return val;
 }
 
@@ -172,7 +174,7 @@ parse_raw_txnord(const char *str)
 	 * orderid, regionid, systemid, stationid, typeid, bid, price, volmin,
 	 * volrem, volent, issued, duration, range, reportedby, rtime
 	 */
-	if (*str == '"') {
+	if (*str == '"') { /* Some formats contain a leading '"' */
 		str++;
 	}
 	txn.orderID = parse_uint64(&str); str += SKIPLEN;
@@ -195,24 +197,13 @@ parse_raw_txnord(const char *str)
 	txn.volEnt = (uint32_t)parse_uint64(&str); str += SKIPLEN;
 	txn.issued = parse_datetime(&str); str += SKIPLEN;
 	txn.duration = (uint16_t)parse_uint64(&str); /* Day(s) */
-	while (!isdigit(*str)) {
+	while (!isdigit(*str)) { /* handle ':', "Day", and "Days" trailers */
 		str++;
 	}
-	/* There's an hour, min, and sec field that's never used, so skip. */
-	parse_uint64(&str); str++; /* Hour: */
-	parse_uint64(&str); str++; /* Min: */
-	parse_uint64(&str); /* Sec(.)  */
-	if (*str == '.') {
-		str++;
-		parse_uint64(&str); /* Handle optional fractional seconds. */
-	}
-	str += SKIPLEN;
-	txn.range = parse_range(&str); /* Special since range has negatives. */
-	str += SKIPLEN;
+	parse_timestamp(&str); str += SKIPLEN;
+	txn.range = parse_range(&str); str += SKIPLEN;
 	txn.reportedby = parse_uint64(&str); str += SKIPLEN;
-	/* Year, month, day again */
 	txn.rtime = parse_datetime(&str);
-
 	return txn;
 }
 
@@ -220,7 +211,9 @@ parse_raw_txnord(const char *str)
 static int
 has_bad_value(const struct eve_txn *txn)
 {
-	assert(txn != NULL);
+	{ /* Preconditions */
+		assert(txn != NULL);
+	}
 	if (txn->issued > txn->rtime) {
 		return 1;
 	} else if (txn->bid > 1) {
@@ -255,7 +248,7 @@ parse_txn_pt_bo(const char *str, struct eve_txn *txn)
 int
 parse_txn_pt(const char *str, struct eve_txn *txn)
 {
-	{
+	{ /* Preconditions */
 		assert(str != NULL);
 		assert(txn != NULL);
 	}
@@ -268,7 +261,7 @@ parse_txn_pt(const char *str, struct eve_txn *txn)
 int
 parse(const char *str, struct eve_txn *txn)
 {
-	{
+	{ /* Preconditions */
 		assert(str != NULL);
 		assert(txn != NULL);
 	}
