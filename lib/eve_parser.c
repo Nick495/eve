@@ -9,7 +9,7 @@ static uint32_t
 ejday(unsigned int year, unsigned int month, unsigned int day)
 {
 	#define E_JDAY 719558       /* Julian Day of epoch (1970-1-1) */
-	return (year*365 + year/4 - year/100 + year/400
+	return (year * 365 + year/4 - year/100 + year/400
 	    + (month * 306 + 5) / 10 + day - 1 - E_JDAY) * DAY_SECONDS;
 }
 
@@ -36,20 +36,20 @@ pt_to_utc(const uint32_t pacificTime)
 	}
 }
 
-/* Parses a decimal value from a string TODO:Investigate pointer use */
+/* Parses a decimal value from a string */
 static uint64_t
 parse_uint64(const char **s)
 {
-	assert(s != NULL);
-	assert(*s != NULL);
-
+	{ /* Preconditions */
+		assert(s != NULL);
+		assert(*s != NULL);
+	}
 	uint64_t val = 0;
 	const char *str = *s;
 	while (isdigit(*str)) {
 		val = val * 10 + (unsigned int)(*str++ - '0');
 	}
 	*s = str;
-
 	return val;
 }
 
@@ -79,56 +79,82 @@ range_to_byte(unsigned int range)
 static int8_t
 parse_range(const char **s)
 {
-	assert(s != NULL);
-	assert(*s != NULL);
-
-	if (**s == '-') {
-		*s += 1;
-		while (isdigit(**s)) {
-			/* Be a good neighbor and skip remaining digits */
-			*s += 1;
-		}
-		return -1;
+	{ /* Preconditions */
+		assert(s != NULL);
+		assert(*s != NULL);
 	}
 
-	return range_to_byte((unsigned int)parse_uint64(s));
+	if (**s != '-') {
+		return range_to_byte((unsigned int)parse_uint64(s));
+	}
+
+	/* Handle negative values. */
+	*s += 1;
+	while (isdigit(**s)) { /* Be a good neighbor & skip remaining digits */
+		*s += 1;
+	}
+	return -1;
 }
 
 static uint32_t
 parse_datetime(const char **s)
 {
-	uint32_t val = 0;
-	unsigned int year;
-	unsigned int month;
-	unsigned int days;
-	unsigned int sectenths;
-
-	assert(s != NULL);
-	assert(*s != NULL);
-	/* 'YYYY-MM-DD ' is the format. */
-	year = ((*s)[0] - '0') * 1000 + ((*s)[1] - '0') * 100
-	    + ((*s)[2] - '0') * 10 + ((*s)[3] - '0'); *s += 5;  /* Skip '-' */
-	month = ((*s)[0] - '0') * 10 + ((*s)[1] - '0'); *s += 3; /* Skip '-' */
-	days = ((*s)[0] - '0') * 10 + ((*s)[1] - '0'); *s += 3; /* Skip ' ' */
-	val = ejday(year, month, days);
-
-	/* Time format is HH:MM:SS(.S...) */
-	val += (((*s)[0] - '0') * 10 + ((*s)[1] - '0')) * HR_SECONDS; *s += 3;
-	val += (((*s)[0] - '0') * 10 + ((*s)[1] - '0')) * MIN_SECONDS; *s += 3;
-	val +=(((*s)[0] - '0') * 10 + ((*s)[1] - '0')); *s += 2;
-
-	if (**s == '.') { /* Trailing seconds are optional */
-		*s += 1;
-		sectenths = (uint32_t)(**s - '0') * 10; *s += 1;
-		if (isdigit(**s)) {
-			sectenths += (uint32_t)(**s - '0'); *s += 1;
-		}
-		if (sectenths > 50) { /* 50 sectenths = .5 seconds. */
-			val++; /* Round to nearest second. */
-		}
+	uint32_t val;
+	{ /* Preconditions */
+		assert(s != NULL);
+		assert(*s != NULL);
 	}
-	while (isdigit(**s)) { /* Skip any trailing second digits. */
-		*s += 1;
+	{ /* Parse 'YYYY-MM-DD ' date format. */
+		unsigned int powers[4] = {1000, 100, 10, 1};
+		unsigned int year = 0, month = 0, day = 0, i;
+		const char *str = *s;
+		for (i = 0; i < 4; ++i) {
+			year += (*str++ - '0') * powers[i];
+		}
+		str++; /* Skip '-' */
+		for (i = 0; i < 2; ++i) {
+			month += (*str++ - '0') * powers[i];
+		}
+		str++; /* Skip '-' */
+		for (i = 0; i < 2; ++i) {
+			day += (*str++ - '0') * powers[i];
+		}
+		str++; /* Skip ' ' */
+		val = ejday(year, month, day);
+		*s = str;
+	}
+	{ /* Parse HH:MM:SS(.S...) time format */
+		unsigned int powers[2] = {10, 1};
+		unsigned int tmp, i;
+		const char *str = *s;
+		for (i = 0, tmp = 0; i < 2; ++i) {
+			tmp += (*str++ - '0') * powers[i];
+		}
+		val += tmp * HR_SECONDS;
+		str++; /* Skip ':' */
+		for (i = 0, tmp = 0; i < 2; ++i) {
+			tmp += (*str++ - '0') * powers[i];
+		}
+		val += tmp * MIN_SECONDS;
+		str++; /* Skip second ':' */
+		for (i = 0, tmp = 0; i < 2; ++i) {
+			tmp += (*str++ - '0') * powers[i];
+		}
+		if (*str == '.') { /* Trailing seconds are optional */
+			str++; /* Skip '.' */
+			if ((*str++ - '0') >= 5) {
+				/* Now we're looking at tenths of seconds.
+				 * If that tenth is >= 5 (i.e., >= .5 of a
+				 * second, increment in order to round to the
+				 * nearest second)
+				*/
+				tmp++;
+			}
+		}
+		val += tmp;
+		while (isdigit(*str)) { /* Skip any trailing semi-seconds. */
+			str++;
+		}
 	}
 	return val;
 }
@@ -209,12 +235,14 @@ has_bad_value(const struct eve_txn *txn)
 int
 parse_txn_pt_bo(const char *str, struct eve_txn *txn)
 {
-	assert(str != NULL);
-	assert(txn != NULL);
-
+	{ /* Preconditions */
+		assert(str != NULL);
+		assert(txn != NULL);
+	}
 	*txn = parse_raw_txnord(str);
-	/* Buy order ranges are incortxnt for this period, so if it's a buy
-	 * order (bid) then estimate the range as the smallest
+	/*
+	 * Buy order ranges are incortxnt for this period, so if it's a bid, or
+	 * buy order then assume the range is the smallest possible, station.
 	*/
 	if (txn->bid == 1) {
 		txn->range = -1;
@@ -227,9 +255,10 @@ parse_txn_pt_bo(const char *str, struct eve_txn *txn)
 int
 parse_txn_pt(const char *str, struct eve_txn *txn)
 {
-	assert(str != NULL);
-	assert(txn != NULL);
-
+	{
+		assert(str != NULL);
+		assert(txn != NULL);
+	}
 	*txn = parse_raw_txnord(str);
 	txn->issued = pt_to_utc(txn->issued);
 	txn->rtime = pt_to_utc(txn->rtime);
@@ -239,9 +268,10 @@ parse_txn_pt(const char *str, struct eve_txn *txn)
 int
 parse(const char *str, struct eve_txn *txn)
 {
-	assert(str != NULL);
-	assert(txn != NULL);
-
+	{
+		assert(str != NULL);
+		assert(txn != NULL);
+	}
 	*txn = parse_raw_txnord(str);
 	return has_bad_value(txn);
 }
@@ -255,7 +285,6 @@ eve_txn_parser_factory(uint32_t year, uint32_t month, uint32_t day)
 	#define D20100718 1279584000
 	#define D20110213 1297468800
 #endif
-
 	const uint64_t parsedTime = ejday(year, month, day);
 	if (parsedTime < D20070101) {
 		return parse_txn_pt_bo;

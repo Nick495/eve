@@ -9,7 +9,6 @@
 
 typedef int (*eve_txn_parser)(const char *str, struct eve_txn *rec);
 
-eve_txn_parser
-eve_txn_parser_factory(uint32_t yr, uint32_t mn, uint32_t dy);
+eve_txn_parser eve_txn_parser_factory(uint32_t yr, uint32_t mn, uint32_t dy);
 
 #endif

@@ -2,6 +2,7 @@
 
 #mkfifo ./lol.pipe
 
+# Performance testing pipes.
 #time ./test < ./lol.pipe >log.txt &
 #iprofiler -systemtrace ./test < ./lol.pipe >log.txt &
 
@@ -19,12 +20,13 @@ do
 	date=$( echo $item | rev | cut -c 9-18 | rev )
 	size=$( gzip -l ${item} | sed '1d' | awk '{print $2}' )
 
-	# The following form has no monitoring, but is faster as a result. We
-	# can use 'progress' to monitor it.
 	echo "Processing - ${date}"
+	# Pipe mode stuff (Currently broken).
 	#( echo ${date}; gunzip -c ${item} ) >&3
-	#( echo ${date}; gunzip -c ${item} ) | ./test >> ./log.txt
-	( echo ${date}; gunzip -c ${item} ) | valgrind ./test
+	# Regular mode (faster).
+	( echo ${date}; gunzip -c ${item} ) | ./test >> ./log.txt
+	# Testing.
+	#( echo ${date}; gunzip -c ${item} ) | valgrind ./test
 
 done
 
