@@ -1,9 +1,7 @@
 #include <stdlib.h>	/* */
-#include <stdio.h>	/* fgets(), sscanf(), printf() */
-#include <errno.h>	/* errno, perror() */
-#include <fcntl.h>	/* open() */
+#include <stdio.h>	/* printf() */
+#include <errno.h>	/* perror() */
 #include <unistd.h>	/* close(), fork() */
-#include <string.h>	/* strlen() */
 #include <sys/wait.h>	/* waitpid() */
 
 #include "lib/eve_parser.h"
@@ -87,10 +85,11 @@ parse_handler(char *line, int outfd, eve_txn_parser parse_txn)
 static int
 eve_parser(const int infd, const int outfd)
 {
-	const unsigned int BUFSIZE = 16384;
+/* Macros necessary for strict ISO-c90 compliance (according to clang) */
+#define BUFSIZE 16384
+#define LEN 11 /* 'YYYY-MM-DD\n' is 11 chars. */
 	char inbuf[BUFSIZE]; /* Buffer for input() reading. */
-	const unsigned int len = 11; /* 'YYYY-MM-DD\n' is 11 chars. */
-	char datestr[len + 1]; /* and null */
+	char datestr[LEN + 1]; /* and null */
 	struct rl_data ind;
 	eve_txn_parser parse_txn;
 
@@ -100,7 +99,7 @@ eve_parser(const int infd, const int outfd)
 	}
 	{ /* Initialize the parse_txn pointer */
 		unsigned int year, mon, day;
-		if (readline(&ind, datestr, 12) < len) {
+		if (readline(&ind, datestr, 12) < LEN) {
 			printf("Failed to read date inbuf.\n");
 			return 2;
 		}
@@ -141,7 +140,7 @@ sample_inserter(int infd)
 		print_eve_txn(&txn);
 	}
 	if (rdval == -1) {
-		fprintf(stderr, "Failed to read().\n");
+		perror("read()");
 	}
 	return 0;
 }

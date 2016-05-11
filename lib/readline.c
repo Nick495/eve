@@ -47,14 +47,15 @@ readline_free(struct rl_data *data)
 ssize_t
 readline(struct rl_data *data, char *buf, size_t bufcap)
 {
-	assert(buf != NULL);
-	assert(bufcap > 0);
-	assert(data != NULL);
-	assert(data->buf != NULL);
-	assert(data->blen > 0);
-	assert(data->blen <= (ssize_t)data->bcap);
-
 	char *bufptr = buf;
+	{
+		assert(buf != NULL);
+		assert(bufcap > 0);
+		assert(data != NULL);
+		assert(data->buf != NULL);
+		assert(data->blen > 0);
+		assert(data->blen <= (ssize_t)data->bcap);
+	}
 	while(--bufcap > 1) { /* We return the '\n' as well, unlike K&R */
 		if (data->bptr - data->buf >= data->blen) {
 			data->blen = read(data->fd, data->buf, data->bcap);

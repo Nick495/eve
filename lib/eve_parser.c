@@ -9,7 +9,7 @@ static uint32_t
 ejday(unsigned int year, unsigned int month, unsigned int day)
 {
 	#define E_JDAY 719558       /* Julian Day of epoch (1970-1-1) */
-	return (year * 365 + year/4 - year/100 + year/400
+	return (year * 365 + year / 4 - year / 100 + year / 400
 	    + (month * 306 + 5) / 10 + day - 1 - E_JDAY) * DAY_SECONDS;
 }
 
@@ -40,12 +40,12 @@ pt_to_utc(const uint32_t pacificTime)
 static uint64_t
 parse_uint64(const char **s)
 {
+	uint64_t val = 0;
+	const char *str = *s;
 	{ /* Preconditions */
 		assert(s != NULL);
 		assert(*s != NULL);
 	}
-	uint64_t val = 0;
-	const char *str = *s;
 	while (isdigit(*str)) {
 		val = val * 10 + (unsigned int)(*str++ - '0');
 	}
@@ -55,7 +55,7 @@ parse_uint64(const char **s)
 
 /* Returns -2 on failure. */
 static int8_t
-range_to_byte(unsigned int range)
+range_to_byte(const unsigned int range)
 {
 	switch(range) {
 	case 0:
@@ -89,7 +89,7 @@ parse_range(const char **s)
 	}
 
 	/* Handle negative values. */
-	*s += 1;
+	*s += 1; /* Handle negative values. */
 	while (isdigit(**s)) { /* Be a good neighbor & skip remaining digits */
 		*s += 1;
 	}
@@ -103,6 +103,10 @@ parse_timestamp(const char **s)
 	unsigned int powers[2] = {10, 1};
 	unsigned int hour = 0, minute = 0, second = 0, i;
 	const char *str = *s;
+	{ /* Preconditions */
+		assert(s != NULL);
+		assert(*s != NULL);
+	}
 	for (i = 0; i < 2; ++i) {
 		hour += (*str++ - '0') * powers[i];
 	}
@@ -165,9 +169,9 @@ static struct eve_txn
 parse_raw_txnord(const char *str)
 {
 	struct eve_txn txn;
-
-	assert(str != NULL);
-
+	{ /* Preconditions */
+		assert(str != NULL);
+	}
 #define SKIPLEN 3 /* Our fields have a 3 character seperator ' , ' or '","' */
 	/*
 	 * Input Order:
