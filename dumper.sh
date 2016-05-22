@@ -24,7 +24,7 @@ do
 	# Pipe mode stuff (Currently broken).
 	#( echo ${date}; gunzip -c ${item} ) >&3
 	# Regular mode (faster).
-	( echo ${date}; gunzip -c ${item} ) | ./test >> ./log.txt
+#	( echo ${date}; gunzip -c ${item} ) | ./test >> ./log.txt
 	# Testing.
 	#( echo ${date}; gunzip -c ${item} ) | valgrind ./test
 

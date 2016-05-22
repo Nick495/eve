@@ -38,10 +38,10 @@ pt_to_utc(const uint32_t pacificTime)
 
 /* Parses a decimal value from a string */
 static uint64_t
-parse_uint64(const char **s)
+parse_uint(const char** const s)
 {
 	uint64_t val = 0;
-	const char *str = *s;
+	const char* str = *s;
 	{ /* Preconditions */
 		assert(s != NULL);
 		assert(*s != NULL);
@@ -77,17 +77,15 @@ range_to_byte(const unsigned int range)
 }
 
 static int8_t
-parse_range(const char **s)
+parse_range(const char** const s)
 {
 	{ /* Preconditions */
 		assert(s != NULL);
 		assert(*s != NULL);
 	}
-
 	if (**s != '-') {
-		return range_to_byte((unsigned int)parse_uint64(s));
+		return range_to_byte((unsigned int)parse_uint(s));
 	}
-
 	/* Handle negative values. */
 	*s += 1; /* Handle negative values. */
 	while (isdigit(**s)) { /* Be a good neighbor & skip remaining digits */
@@ -98,11 +96,11 @@ parse_range(const char **s)
 
 /* Parse HH:MM:SS(.S...) time format */
 static uint32_t
-parse_timestamp(const char **s)
+parse_timestamp(const char** const s)
 {
-	unsigned int powers[2] = {10, 1};
+	const unsigned int powers[2] = {10, 1};
 	unsigned int hour = 0, minute = 0, second = 0, i;
-	const char *str = *s;
+	const char* str = *s;
 	{ /* Preconditions */
 		assert(s != NULL);
 		assert(*s != NULL);
@@ -135,7 +133,7 @@ parse_timestamp(const char **s)
 }
 
 static uint32_t
-parse_datetime(const char **s)
+parse_datetime(const char** const s)
 {
 	uint32_t val;
 	{ /* Preconditions */
@@ -166,12 +164,13 @@ parse_datetime(const char **s)
 }
 
 static struct eve_txn
-parse_raw_txnord(const char *str)
+parse_raw_txnord(const char* str)
 {
 	struct eve_txn txn;
 	{ /* Preconditions */
 		assert(str != NULL);
 	}
+	printf("DEBUG: %s\n", str); /* DEBUG: */
 #define SKIPLEN 3 /* Our fields have a 3 character seperator ' , ' or '","' */
 	/*
 	 * Input Order:
@@ -181,13 +180,13 @@ parse_raw_txnord(const char *str)
 	if (*str == '"') { /* Some formats contain a leading '"' */
 		str++;
 	}
-	txn.orderID = parse_uint64(&str); str += SKIPLEN;
-	txn.regionID = (uint32_t)parse_uint64(&str); str += SKIPLEN;
-	txn.systemID = (uint32_t)parse_uint64(&str); str += SKIPLEN;
-	txn.stationID = (uint32_t)parse_uint64(&str); str += SKIPLEN;
-	txn.typeID = (uint32_t)parse_uint64(&str); str += SKIPLEN;
-	txn.bid = (uint8_t)parse_uint64(&str); str += SKIPLEN;
-	txn.price = parse_uint64(&str) * 100;
+	txn.orderID = parse_uint(&str); str += SKIPLEN;
+	txn.regionID = (uint32_t)parse_uint(&str); str += SKIPLEN;
+	txn.systemID = (uint32_t)parse_uint(&str); str += SKIPLEN;
+	txn.stationID = (uint32_t)parse_uint(&str); str += SKIPLEN;
+	txn.typeID = (uint32_t)parse_uint(&str); str += SKIPLEN;
+	txn.bid = (uint8_t)parse_uint(&str); str += SKIPLEN;
+	txn.price = parse_uint(&str) * 100;
 	if (*str == '.') { /* Cents & cent field are optional */
 		str++;
 		txn.price += (uint32_t)(*str++ - '0') * 10;
@@ -196,24 +195,24 @@ parse_raw_txnord(const char *str)
 		}
 	}
 	str += SKIPLEN;
-	txn.volMin = (uint32_t)parse_uint64(&str); str += SKIPLEN;
-	txn.volRem = (uint32_t)parse_uint64(&str); str += SKIPLEN;
-	txn.volEnt = (uint32_t)parse_uint64(&str); str += SKIPLEN;
+	txn.volMin = (uint32_t)parse_uint(&str); str += SKIPLEN;
+	txn.volRem = (uint32_t)parse_uint(&str); str += SKIPLEN;
+	txn.volEnt = (uint32_t)parse_uint(&str); str += SKIPLEN;
 	txn.issued = parse_datetime(&str); str += SKIPLEN;
-	txn.duration = (uint16_t)parse_uint64(&str); /* Day(s) */
+	txn.duration = (uint16_t)parse_uint(&str); /* Day(s) */
 	while (!isdigit(*str)) { /* handle ':', "Day", and "Days" trailers */
 		str++;
 	}
 	parse_timestamp(&str); str += SKIPLEN;
 	txn.range = parse_range(&str); str += SKIPLEN;
-	txn.reportedby = parse_uint64(&str); str += SKIPLEN;
+	txn.reportedby = parse_uint(&str); str += SKIPLEN;
 	txn.rtime = parse_datetime(&str);
 	return txn;
 }
 
 /* Returns 0 if no badval, type of bad value otherwise. */
 static int
-has_bad_value(const struct eve_txn *txn)
+has_bad_value(const struct eve_txn* const txn)
 {
 	{ /* Preconditions */
 		assert(txn != NULL);
@@ -230,7 +229,7 @@ has_bad_value(const struct eve_txn *txn)
 
 /* Check formats.txt for specifics of each format. */
 int
-parse_txn_pt_bo(const char *str, struct eve_txn *txn)
+parse_txn_pt_bo(const char* const str, struct eve_txn* txn)
 {
 	{ /* Preconditions */
 		assert(str != NULL);
@@ -238,12 +237,11 @@ parse_txn_pt_bo(const char *str, struct eve_txn *txn)
 	}
 	*txn = parse_raw_txnord(str);
 	/*
-	 * Buy order ranges are incortxnt for this period, so if it's a bid, or
-	 * buy order then assume the range is the smallest possible, station.
+	 * Buy order ranges are incortxnt for this period, so if it's a bid, 1,
+	 * then assume the range is the smallest possible, station.
+	 * Similarly, the range for sell orders (0) is always 0, so:
 	*/
-	if (txn->bid == 1) {
-		txn->range = -1;
-	}
+	txn->range = -1 * txn->bid;
 	txn->issued = pt_to_utc(txn->issued);
 	txn->rtime = pt_to_utc(txn->rtime);
 	return has_bad_value(txn);

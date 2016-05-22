@@ -4,7 +4,7 @@
 #include <stdlib.h>	/* write() */
 #include <string.h>	/* memcpy(), memmove() */
 #include <unistd.h>	/* write() */
-#include <assert.h> /* assert() */
+#include <assert.h>	/* assert() */
 
 #include "lz4/lib/lz4.h"
 

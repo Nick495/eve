@@ -11,7 +11,7 @@
 static int
 bad_date(unsigned int year, unsigned int month, unsigned int day)
 {
-	if (year < 2006 || year > 3000) {
+	if (year < 2006 || year > 3000) { /* Our dataset begins with 2006. */
 		return 1;
 	} else if (month < 1 || month > 12) {
 		return 1;
@@ -23,36 +23,34 @@ bad_date(unsigned int year, unsigned int month, unsigned int day)
 
 typedef unsigned int uint;
 static int
-parse_date(const char* const str, uint *year, uint *month, uint *day)
+parse_date(const char *str, uint *year, uint *month, uint *day)
 {
-	{
-		/* Preconditions */
+	{	/* Preconditions */
 		assert(str != NULL);
 		assert(year != NULL);
 		assert(month != NULL);
 		assert(day != NULL);
 	}
-	{
-		/* Input format validation: */
+	{	/* Input format validation: */
 		/* Confirm that datestring has the format 'YYYY-MM-DD' */
-		if (str[4] != '-' || str[7] != '-' || str[11] != '\0') {
+		if (str[4] != '-' || str[7] != '-') {
 			return 1;
 		}
 	}
-	{
-		/* Value parsing: */
+	{	/* Value parsing: */
 		unsigned int i;
 		unsigned int offsets[4] = {1000, 100, 10, 1};
-		const char* s = str;
 		*year = *month = *day = 0;
 		for (i = 0; i < 4; ++i) { /* Year is 4 digits */
-			*year += (*s++ - '0') + offsets[i];
+			*year += (*str++ - '0') * offsets[i];
 		}
+		str++; /* Skip '-' */
 		for (i = 0; i < 2; ++i) {
-			*month += (*s++ - '0') + offsets[i];
+			*month += (*str++ - '0') * offsets[i + (4 - 2)];
 		}
+		str++; /* Skip '-' */
 		for (i = 0; i < 2; ++i) {
-			*day += (*s++ - '0') + offsets[i];
+			*day += (*str++ - '0') * offsets[i + (4 - 2)];
 		}
 	}
 	return bad_date(*year, *month, *day) ? 2 : 0;
@@ -85,24 +83,14 @@ parse_handler(char *line, int outfd, eve_txn_parser parse_txn)
 static int
 eve_parser(const int infd, const int outfd)
 {
-/* Macros necessary for strict ISO-c90 compliance (according to clang) */
-#define BUFSIZE 16384
-#define LEN 11 /* 'YYYY-MM-DD\n' is 11 chars. */
-	char inbuf[BUFSIZE]; /* Buffer for input() reading. */
-	char datestr[LEN + 1]; /* and null */
-	struct rl_data ind;
+	FILE *fin = fdopen(infd, "r");
+	char datestr[12];
+	char line[500];
 	eve_txn_parser parse_txn;
 
-	if (readline_init(&ind, infd, inbuf, BUFSIZE)) {
-		printf("Failed to initialize readline structure.\n");
-		return 1;
-	}
 	{ /* Initialize the parse_txn pointer */
 		unsigned int year, mon, day;
-		if (readline(&ind, datestr, 12) < LEN) {
-			printf("Failed to read date inbuf.\n");
-			return 2;
-		}
+		fgets(datestr, 12, fin);
 		if (parse_date(datestr, &year, &mon, &day)) {
 			printf("Bad date line.\n");
 			return 3;
@@ -112,21 +100,17 @@ eve_parser(const int infd, const int outfd)
 			return 4;
 		}
 	}
-	{ /* Gets rid of the header line and parses each transaction. */
-		char line[500];
-		if (readline(&ind, line, 500) < 1) { /* Get rid of header. */
-			printf("Bad header line.\n");
-			return 5;
-		}
-		while (readline(&ind, line, 500) >= 0) {
+	{ /* Get rid of the header line and parse each transaction. */
+		fgets(line, 500, fin); /* Get rid of header. */
+		printf("DEBUG: line: %s\n", line);
+		while (fgets(line, 500, fin)) {
 			parse_handler(line, outfd, parse_txn);
 		}
-		if (readline_err(&ind) == 0) {
-			printf("Finished file: %s\n", datestr);
-		} else {
+		if (feof(fin)) {
 			printf("Error reading: %s\n", datestr);
 			return -1;
 		}
+		printf("Finished file: %s\n", datestr);
 	}
 	return 0;
 }
