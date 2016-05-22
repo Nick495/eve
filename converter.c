@@ -6,7 +6,6 @@
 
 #include "lib/eve_parser.h"
 #include "lib/eve_txn.h"
-#include "lib/readline.h"
 
 static int
 bad_date(unsigned int year, unsigned int month, unsigned int day)
@@ -84,15 +83,15 @@ static int
 eve_parser(const int infd, const int outfd)
 {
 	FILE *fin = fdopen(infd, "r");
-	char datestr[12];
-	char line[500];
+	char datebuf[12];
+	char linebuf[500];
 	eve_txn_parser parse_txn;
 
 	{ /* Initialize the parse_txn pointer */
 		unsigned int year, mon, day;
-		fgets(datestr, 12, fin);
-		if (parse_date(datestr, &year, &mon, &day)) {
-			printf("Bad date line.\n");
+		fgets(datebuf, 12, fin);
+		if (parse_date(datebuf, &year, &mon, &day)) {
+			printf("Bad date linebuf.\n");
 			return 3;
 		}
 		if ((parse_txn=eve_txn_parser_factory(year, mon, day))==NULL) {
@@ -100,17 +99,17 @@ eve_parser(const int infd, const int outfd)
 			return 4;
 		}
 	}
-	{ /* Get rid of the header line and parse each transaction. */
-		fgets(line, 500, fin); /* Get rid of header. */
-		printf("DEBUG: line: %s\n", line);
-		while (fgets(line, 500, fin)) {
-			parse_handler(line, outfd, parse_txn);
+	{ /* Get rid of the header linebuf and parse each transaction. */
+		fgets(linebuf, 500, fin); /* Get rid of header. */
+		printf("DEBUG: linebuf: %s\n", linebuf);
+		while (fgets(linebuf, 500, fin)) {
+			parse_handler(linebuf, outfd, parse_txn);
 		}
 		if (feof(fin)) {
-			printf("Error reading: %s\n", datestr);
+			printf("Error reading: %s\n", datebuf);
 			return -1;
 		}
-		printf("Finished file: %s\n", datestr);
+		printf("Finished file: %s\n", datebuf);
 	}
 	return 0;
 }
