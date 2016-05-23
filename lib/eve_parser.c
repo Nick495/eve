@@ -1,39 +1,68 @@
 #include "eve_parser.h"
 
-#define DAY_SECONDS 86400
 #define HR_SECONDS 3600
-#define MIN_SECONDS 60
 
 /* Fast converter between years and Epoch normalized Julian Days, in seconds */
 static uint32_t
 ejday(unsigned int year, unsigned int month, unsigned int day)
 {
 	#define E_JDAY 719558       /* Julian Day of epoch (1970-1-1) */
+	#define DAY_SECONDS 86400
 	return (year * 365 + year / 4 - year / 100 + year / 400
 	    + (month * 306 + 5) / 10 + day - 1 - E_JDAY) * DAY_SECONDS;
 }
 
-/* Converts a pacific timestamp to UTC. Faster than mktime() by a lot. */
+/* Parse HH:MM:SS(.S...) time format */
 static uint32_t
-pt_to_utc(const uint32_t pacificTime)
+parse_timestamp(const char** const s)
 {
-	/*
-	 * YYYY-MM-DD-HH in PT (These are the date-times where daylight savings
-	 * time apparently switches (according to tzdump on my machine) within
-	 * the range of dates that we care about.
-	*/
-	#define D2006040203 1144033200
-	#define D2006102901 1162256400
-	#define D2007031103 1173754800
-	if (pacificTime < D2006040203) {
-		return pacificTime + 8 * HR_SECONDS;
-	} else if (pacificTime < D2006102901) {
-		return pacificTime + 7 * HR_SECONDS;
-	} else if (pacificTime < D2007031103) {
-		return pacificTime + 8 * HR_SECONDS;
-	} else { /* Data is UTC after this time period, so else() is fine. */
-		return pacificTime + 7 * HR_SECONDS;
+	#define MIN_SECONDS 60
+	unsigned int ret;
+	const char* str = *s;
+	{ /* Preconditions */
+		assert(s != NULL);
+		assert(*s != NULL);
 	}
+	/* Parse the HH:MM:SS(.S...) time format. */
+	ret = ((str[0] - '0') * 10 + (str[1] - '0')) * HR_SECONDS;
+	ret += ((str[3] - '0') * 10 + (str[4] - '0')) * MIN_SECONDS; /*skip :*/
+	ret += (str[6] - '0') * 10 + (str[7] - '0'); /* skip ':' as above */
+	if (str[8] == '.') { /* Handle optional trailing seconds */
+		str += 9; /* Skip '.' */
+		/* Now we're looking at tenths of seconds. If that
+		 * tenth is >= 5 (i.e., >= .5 of a second), then
+		 * increment to round to the nearest second.
+		*/
+		ret += (*str++ - '0' >= 5) ? 1 : 0;
+		while (isdigit(*str)) {
+			str++;
+		}
+	}
+	*s = str;
+	return ret;
+}
+
+/* Parse 'YYYY-MM-DD HH:MM:SS(.S...) datetime format */
+static uint32_t
+parse_datetime(const char** const s)
+{
+	uint32_t ret;
+	{ /* Preconditions */
+		assert(s != NULL);
+		assert(*s != NULL);
+	}
+	{ /* Parse 'YYYY-MM-DD ' date format. */
+		unsigned int year = 0, month = 0, day = 0;
+		const char *str = *s;
+		year = (str[0] - '0') * 1000 + (str[1] - '0') * 100
+		    + (str[2] - '0') * 10 + (str[3] - '0');
+		month = (str[5] - '0') * 10 + (str[6] - '0'); /* skip '-' */
+		day = (str[8] - '0') * 10 + (str[9] - '0'); /* skip '-' */
+		*s = str + 11; /* Skip trailing space. */
+		ret = ejday(year, month, day);
+	}
+	ret += parse_timestamp(s);
+	return ret;
 }
 
 /* Parses a decimal value from a string */
@@ -87,80 +116,11 @@ parse_range(const char** const s)
 		return range_to_byte((unsigned int)parse_uint(s));
 	}
 	/* Handle negative values. */
-	*s += 1; /* Handle negative values. */
+	*s += 1;
 	while (isdigit(**s)) { /* Be a good neighbor & skip remaining digits */
 		*s += 1;
 	}
 	return -1;
-}
-
-/* Parse HH:MM:SS(.S...) time format */
-static uint32_t
-parse_timestamp(const char** const s)
-{
-	const unsigned int powers[2] = {10, 1};
-	unsigned int hour = 0, minute = 0, second = 0, i;
-	const char* str = *s;
-	{ /* Preconditions */
-		assert(s != NULL);
-		assert(*s != NULL);
-	}
-	for (i = 0; i < 2; ++i) {
-		hour += (*str++ - '0') * powers[i];
-	}
-	str++; /* Skip ':' */
-	for (i = 0; i < 2; ++i) {
-		minute += (*str++ - '0') * powers[i];
-	}
-	str++; /* Skip second ':' */
-	for (i = 0; i < 2; ++i) {
-		second += (*str++ - '0') * powers[i];
-	}
-	if (*str == '.') { /* Trailing seconds are optional */
-		str++; /* Skip '.' */
-		if ((*str++ - '0') >= 5) {
-			/* Now we're looking at tenths of seconds. If that
-			 * tenth is >= 5 (i.e., >= .5 of a second), then
-			 * increment to round to the nearest second.
-			*/
-			second++;
-		}
-	}
-	while (isdigit(*str)) { /* Skip any trailing semi-seconds. */
-		str++;
-	}
-	return hour * HR_SECONDS + minute * MIN_SECONDS + second;
-}
-
-static uint32_t
-parse_datetime(const char** const s)
-{
-	uint32_t val;
-	{ /* Preconditions */
-		assert(s != NULL);
-		assert(*s != NULL);
-	}
-	{ /* Parse 'YYYY-MM-DD ' date format. */
-		unsigned int powers[4] = {1, 10, 100, 1000};
-		unsigned int year = 0, month = 0, day = 0, i;
-		const char *str = *s;
-		for (i = 0; i < 4; ++i) {
-			year += (*str++ - '0') * powers[4 - i - 1];
-		}
-		str++; /* Skip '-' */
-		for (i = 0; i < 2; ++i) {
-			month += (*str++ - '0') * powers[2 - i - 1];
-		}
-		str++; /* Skip '-' */
-		for (i = 0; i < 2; ++i) {
-			day += (*str++ - '0') * powers[2 - i - 1];
-		}
-		str++; /* Skip ' ' */
-		val = ejday(year, month, day);
-		*s = str;
-	}
-	val += parse_timestamp(s);
-	return val;
 }
 
 static struct eve_txn
@@ -209,6 +169,29 @@ parse_raw_txnord(const char* str)
 	return txn;
 }
 
+/* Converts a pacific timestamp to UTC. Faster than mktime() by a lot. */
+static uint32_t
+pt_to_utc(const uint32_t pacificTime)
+{
+	/*
+	 * YYYY-MM-DD-HH in PT (These are the date-times where daylight savings
+	 * time apparently switches (according to tzdump on my machine) within
+	 * the range of dates that we care about).
+	*/
+	#define D2006040203 1144033200
+	#define D2006102901 1162256400
+	#define D2007031103 1173754800
+	if (pacificTime < D2006040203) {
+		return pacificTime + 8 * HR_SECONDS;
+	} else if (pacificTime < D2006102901) {
+		return pacificTime + 7 * HR_SECONDS;
+	} else if (pacificTime < D2007031103) {
+		return pacificTime + 8 * HR_SECONDS;
+	} else { /* Data is UTC after this time period, so else() is fine. */
+		return pacificTime + 7 * HR_SECONDS;
+	}
+}
+
 /* Returns 0 if no badval, type of bad value otherwise. */
 static int
 has_bad_value(const struct eve_txn* const txn)
@@ -228,6 +211,30 @@ has_bad_value(const struct eve_txn* const txn)
 
 /* Check formats.txt for specifics of each format. */
 int
+parse_txn(const char *str, struct eve_txn *txn)
+{
+	{ /* Preconditions */
+		assert(str != NULL);
+		assert(txn != NULL);
+	}
+	*txn = parse_raw_txnord(str);
+	return has_bad_value(txn);
+}
+
+int
+parse_txn_pt(const char *str, struct eve_txn *txn)
+{
+	{ /* Preconditions */
+		assert(str != NULL);
+		assert(txn != NULL);
+	}
+	*txn = parse_raw_txnord(str);
+	txn->issued = pt_to_utc(txn->issued);
+	txn->rtime = pt_to_utc(txn->rtime);
+	return has_bad_value(txn);
+}
+
+int
 parse_txn_pt_bo(const char* const str, struct eve_txn* txn)
 {
 	{ /* Preconditions */
@@ -246,42 +253,17 @@ parse_txn_pt_bo(const char* const str, struct eve_txn* txn)
 	return has_bad_value(txn);
 }
 
-int
-parse_txn_pt(const char *str, struct eve_txn *txn)
-{
-	{ /* Preconditions */
-		assert(str != NULL);
-		assert(txn != NULL);
-	}
-	*txn = parse_raw_txnord(str);
-	txn->issued = pt_to_utc(txn->issued);
-	txn->rtime = pt_to_utc(txn->rtime);
-	return has_bad_value(txn);
-}
-
-int
-parse(const char *str, struct eve_txn *txn)
-{
-	{ /* Preconditions */
-		assert(str != NULL);
-		assert(txn != NULL);
-	}
-	*txn = parse_raw_txnord(str);
-	return has_bad_value(txn);
-}
-
 eve_txn_parser
 eve_txn_parser_strategy(uint32_t year, uint32_t month, uint32_t day)
 {
-	#define D20070101 1167609600 /* consult formats.txt for dates. */
+	#define D20070101 1167609600 /* Consult formats.txt for dates. */
 	#define D20071001 1191369600
-
 	const uint64_t parsedTime = ejday(year, month, day);
 	if (parsedTime < D20070101) {
 		return parse_txn_pt_bo;
 	} else if (parsedTime < D20071001) {
 		return parse_txn_pt;
 	} else {
-		return parse;
+		return parse_txn;
 	}
 }

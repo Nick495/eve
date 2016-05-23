@@ -19,19 +19,18 @@ parse_errhandler(const char *line, int outfd, const eve_txn_parser txn_parse)
 		write(outfd, &txn, sizeof(txn));
 		return;
 	case 1:
-		printf("Bad time (%u, %u)", txn.issued, txn.rtime);
+		printf("Bad time (%u, %u) : %s\n", txn.issued,txn.rtime,line);
 		break;
 	case 2:
-		printf("Bad bid %u", txn.bid);
+		printf("Bad bid %u : %s", txn.bid, line);
 		break;
 	case 3:
-		printf("Bad range");
+		printf("Bad range : %s", line);
 		break;
 	default:
-		printf("Bad input");
+		printf("Bad input : %s", line);
 		break;
 	}
-	printf(" : %s\n", line);
 	return;
 }
 
