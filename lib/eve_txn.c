@@ -3,7 +3,7 @@
 void
 print_eve_txn(struct eve_txn *t)
 {
-	assert(r != NULL);
+	assert(t != NULL);
 
 	printf(" %llu ", t->orderID);
 	printf(" %u ", t->regionID);

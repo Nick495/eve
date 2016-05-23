@@ -141,19 +141,19 @@ parse_datetime(const char** const s)
 		assert(*s != NULL);
 	}
 	{ /* Parse 'YYYY-MM-DD ' date format. */
-		unsigned int powers[4] = {1000, 100, 10, 1};
+		unsigned int powers[4] = {1, 10, 100, 1000};
 		unsigned int year = 0, month = 0, day = 0, i;
 		const char *str = *s;
 		for (i = 0; i < 4; ++i) {
-			year += (*str++ - '0') * powers[i];
+			year += (*str++ - '0') * powers[4 - i - 1];
 		}
 		str++; /* Skip '-' */
 		for (i = 0; i < 2; ++i) {
-			month += (*str++ - '0') * powers[i];
+			month += (*str++ - '0') * powers[2 - i - 1];
 		}
 		str++; /* Skip '-' */
 		for (i = 0; i < 2; ++i) {
-			day += (*str++ - '0') * powers[i];
+			day += (*str++ - '0') * powers[2 - i - 1];
 		}
 		str++; /* Skip ' ' */
 		val = ejday(year, month, day);
@@ -170,7 +170,6 @@ parse_raw_txnord(const char* str)
 	{ /* Preconditions */
 		assert(str != NULL);
 	}
-	printf("DEBUG: %s\n", str); /* DEBUG: */
 #define SKIPLEN 3 /* Our fields have a 3 character seperator ' , ' or '","' */
 	/*
 	 * Input Order:
@@ -272,14 +271,11 @@ parse(const char *str, struct eve_txn *txn)
 }
 
 eve_txn_parser
-eve_txn_parser_factory(uint32_t year, uint32_t month, uint32_t day)
+eve_txn_parser_strategy(uint32_t year, uint32_t month, uint32_t day)
 {
-	#define D20070101 1167609600
+	#define D20070101 1167609600 /* consult formats.txt for dates. */
 	#define D20071001 1191369600
-#if 0
-	#define D20100718 1279584000
-	#define D20110213 1297468800
-#endif
+
 	const uint64_t parsedTime = ejday(year, month, day);
 	if (parsedTime < D20070101) {
 		return parse_txn_pt_bo;
