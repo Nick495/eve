@@ -2,6 +2,8 @@
 #include <errno.h>	/* perror() */
 #include <unistd.h>	/* close(), fork() */
 #include <sys/wait.h>	/* waitpid() */
+#include <string.h>	/* strcpy() strcat() */
+#include <fcntl.h>	/* O_WRONLY */
 
 #include "lib/eve_parser.h"
 #include "lib/eve_txn.h"
@@ -76,10 +78,10 @@ eve_parser(const int infd, const int outfd)
 }
 
 /*
- * Example 'inserter'. Prints txns to stdout.
+ * Example 'output'. Prints txns to stdout.
 */
 static int
-sample_inserter(int infd)
+sample_output(int infd)
 {
 	ssize_t rb;
 	struct eve_txn txn;
@@ -88,6 +90,57 @@ sample_inserter(int infd)
 	}
 	if (rb == -1) {
 		perror("read()");
+	}
+	return 0;
+}
+
+static int
+sample_column_output(int infd)
+{
+	ssize_t rb;
+	struct eve_txn txn;
+	FILE *fouts[15];
+	{ /* Initialize fds */
+		const char* const prefix = "./data/";
+		const char* const names[15] = { "orderid", "regionid",
+			"systemid", "stationid", "typeid", "bid", "price",
+			"volmin", "volrem", "volent", "issued", "duration",
+			"range", "reportedby", "reportedtime"
+		};
+		char buf[256];
+		for (rb = 0; rb < 15; ++rb) {
+			strcpy(buf, prefix);
+			strcat(buf, names[rb]);
+			fouts[rb] = fopen(buf, "ab");
+			if (!fouts[rb]) {
+				printf("Failed to open %s with error: %s\n",
+				    names[rb], strerror(errno));
+				for (; rb > 0; rb--) { fclose(fouts[rb - 1]); }
+				return 1;
+			}
+		}
+	}
+	/* TODO: Error handle the writes, factor out the loop. */
+	/* Write the eve_txns from infd, column-wise. */
+	while ((rb = read(infd, &txn, sizeof(txn))) == sizeof(txn)) {
+	    fwrite((void *)&txn.orderID, sizeof(txn.orderID), 1, fouts[0]);
+	    fwrite((void *)&txn.regionID, sizeof(txn.regionID), 1, fouts[1]);
+	    fwrite((void *)&txn.systemID, sizeof(txn.systemID), 1, fouts[2]);
+	    fwrite((void *)&txn.stationID, sizeof(txn.stationID), 1, fouts[3]);
+	    fwrite((void *)&txn.typeID, sizeof(txn.typeID), 1, fouts[4]);
+	    fwrite((void *)&txn.bid, sizeof(txn.bid), 1, fouts[5]);
+	    fwrite((void *)&txn.price, sizeof(txn.price), 1, fouts[6]);
+	    fwrite((void *)&txn.volMin, sizeof(txn.volMin), 1, fouts[7]);
+	    fwrite((void *)&txn.volRem, sizeof(txn.volRem), 1, fouts[8]);
+	    fwrite((void *)&txn.volEnt, sizeof(txn.volEnt), 1, fouts[9]);
+	    fwrite((void *)&txn.issued, sizeof(txn.issued), 1, fouts[10]);
+	    fwrite((void *)&txn.duration, sizeof(txn.duration), 1, fouts[11]);
+	    fwrite((void *)&txn.range, sizeof(txn.range), 1, fouts[12]);
+	    fwrite((void *)&txn.reportedby,sizeof(txn.reportedby),1,fouts[13]);
+	    fwrite((void *)&txn.rtime, sizeof(txn.rtime), 1, fouts[14]);
+	}
+	for (rb = 0; rb < 15; ++rb) {
+		fclose(fouts[rb]);
 	}
 	return 0;
 }
@@ -107,7 +160,7 @@ main(void)
 		goto fail_fork;
 	case 0: /* child */
 		close(pipes[1]);
-		return sample_inserter(pipes[0]);
+		return sample_output(pipes[0]);
 	default: /* parent */
 		close(pipes[0]);
 		rc = eve_parser(STDIN_FILENO, pipes[1]); /* parse stdin */

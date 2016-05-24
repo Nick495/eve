@@ -1,5 +1,5 @@
-Note: All dates are in this file are in the format D-M-Y.
-Note: Not all timestamps report decimal seconds.
+Note: All dates are in this file are in the format YYYY-MM-DD.
+Note: Not all timestamps report decimal seconds. HH:MM:SS(.SS...)
 Note: All fields have a 3 length string ( , ) or (",") between them.
 
 File Format 1: (Beginning format)
@@ -7,13 +7,13 @@ File Format 1: (Beginning format)
 	Timestamps in PST.
 
 File Format 2: (Begins usage at 1-1-2007)
-	Buy order ranges correct.
+	Timestamps in PST.
 
 File Format 3: (Begins usage at 1-10-2007)
-	Times are in UTC.
+	Times are now in UTC.
 
 File Format 4: (Begins usage at 18-7-2010)
-	Duration is reported as "X(X) Day(s), H(H):MM:SS"
+	Duration is reported as "X(X) Day(s), H(H):MM:SS" instead of DD:
 
 File Format 5: (Begins usage at 13-2-2011).
 	Fields are quoted.

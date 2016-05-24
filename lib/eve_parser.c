@@ -144,6 +144,9 @@ parse_raw_txn(const char* str)
 	}
 	txn.orderID = parse_uint(&str); str += SKIPLEN;
 	txn.regionID = (uint32_t)parse_uint(&str); str += SKIPLEN;
+	if (*str == '-') {
+		goto fail_bad_val;
+	}
 	txn.systemID = (uint32_t)parse_uint(&str); str += SKIPLEN;
 	txn.stationID = (uint32_t)parse_uint(&str); str += SKIPLEN;
 	txn.typeID = (uint32_t)parse_uint(&str); str += SKIPLEN;
@@ -169,6 +172,10 @@ parse_raw_txn(const char* str)
 	txn.range = parse_range(&str); str += SKIPLEN;
 	txn.reportedby = parse_uint(&str); str += SKIPLEN;
 	txn.rtime = parse_datetime(&str);
+	return txn;
+
+fail_bad_val:
+	txn.bid = 20; /* Random value to cause failure. */
 	return txn;
 }
 
