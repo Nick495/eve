@@ -38,7 +38,6 @@ struct eve_txn {
 					*/
 	uint8_t		bid;		/* 6 1 = buy, 0 = sell. (bid, offer) */
 };
-
 void print_eve_txn(struct eve_txn *t);
 
 #endif

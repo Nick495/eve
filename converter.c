@@ -49,7 +49,7 @@ eve_parser(const int infd, const int outfd)
 		/* Read in 'YYYY-MM-DD' datestring header. */
 		fgets(datebuf, 12, fin);
 		year = (datebuf[0] - '0') * 1000 + (datebuf[1] - '0') * 100
-		    + (datebuf[2] - '0') * 10 + (datebuf[3] - '0');
+			+ (datebuf[2] - '0') * 10 + (datebuf[3] - '0');
 		assert(year >= 2006 && year <= 2020);
 		mon = (datebuf[5] - '0') * 10 + (datebuf[6] - '0');
 		assert(mon >= 1 && mon <= 12);
