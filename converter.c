@@ -85,12 +85,25 @@ sample_output(int infd)
 {
 	ssize_t rb;
 	struct eve_txn txn;
+	FILE* fout;
+	{ /* Init fout */
+		const char* const name = "./test_out";
+		if (!(fout = fopen(name, "ab"))) {
+			printf("Failed to open %s with error: %s\n",
+				name, strerror(errno));
+			return 1;
+		}
+	}
+	/* TODO: Handle write errors */
+	/* Write the eve_txns from infd, row-wise. */
 	while ((rb = read(infd, &txn, sizeof(txn))) == sizeof(txn)) {
-		print_eve_txn(&txn);
+		fwrite((void *)&txn, sizeof(txn), 1, fout);
 	}
 	if (rb == -1) {
 		perror("read()");
+		return 1;
 	}
+	fclose(fout);
 	return 0;
 }
 
@@ -99,8 +112,8 @@ sample_column_output(int infd)
 {
 	ssize_t rb;
 	struct eve_txn txn;
-	FILE *fouts[15];
-	{ /* Initialize fds */
+	FILE* fouts[15];
+	{ /* Initialize fouts */
 		const char* const prefix = "./data/";
 		const char* const names[15] = { "orderid", "regionid",
 			"systemid", "stationid", "typeid", "bid", "price",
@@ -120,7 +133,7 @@ sample_column_output(int infd)
 			}
 		}
 	}
-	/* TODO: Error handle the writes, factor out the loop. */
+	/* TODO: Error handle the writes, 'factor out the loop'. */
 	/* Write the eve_txns from infd, column-wise. */
 	while ((rb = read(infd, &txn, sizeof(txn))) == sizeof(txn)) {
 	    fwrite((void *)&txn.orderID, sizeof(txn.orderID), 1, fouts[0]);
@@ -138,6 +151,10 @@ sample_column_output(int infd)
 	    fwrite((void *)&txn.range, sizeof(txn.range), 1, fouts[12]);
 	    fwrite((void *)&txn.reportedby,sizeof(txn.reportedby),1,fouts[13]);
 	    fwrite((void *)&txn.rtime, sizeof(txn.rtime), 1, fouts[14]);
+	}
+	if (rb == -1) {
+		perror("read()");
+		return 1;
 	}
 	for (rb = 0; rb < 15; ++rb) {
 		fclose(fouts[rb]);
