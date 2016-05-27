@@ -177,7 +177,7 @@ main(void)
 		goto fail_fork;
 	case 0: /* child */
 		close(pipes[1]);
-		return sample_output(pipes[0]);
+		return sample_column_output(pipes[0]);
 	default: /* parent */
 		close(pipes[0]);
 		rc = eve_parser(STDIN_FILENO, pipes[1]); /* parse stdin */
