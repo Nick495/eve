@@ -13,79 +13,126 @@ ejday(unsigned int year, unsigned int month, unsigned int day)
 }
 
 /* Parse HH:MM:SS(.S...) time format into a number of seconds */
-static uint32_t
-parse_timestamp(const char** const s)
+static const char* restrict
+parse_timestamp(const char* restrict s, uint32_t* restrict sectot)
 {
 	#define MIN_SECONDS 60
-	unsigned int sectotal;
-	const char* str = *s;
 	{ /* Preconditions */
 		assert(s != NULL);
-		assert(*s != NULL);
 	}
 	/* Parse the HH:MM:SS(.S...) time format. */
-	sectotal = ((str[0] - '0') * 10 + (str[1] - '0')) * HR_SECONDS;
-	sectotal += ((str[3]-'0')*10 + (str[4]-'0')) * MIN_SECONDS;/*skip ':'*/
-	sectotal += (str[6] - '0') * 10 + (str[7] - '0'); /* skip ':' again */
-	if (str[8] == '.') { /* Handle optional trailing seconds */
-		str += 9; /* Skip '.' */
+	*sectot = ((s[0] - '0') * 10 + (s[1] - '0')) * HR_SECONDS;
+	*sectot += ((s[3] - '0')*10 + (s[4] - '0')) * MIN_SECONDS; /*skip ':'*/
+	*sectot += (s[6] - '0') * 10 + (s[7] - '0'); /* skip ':' again */
+	s += 8;
+	if (*s == '.') { /* Handle optional trailing seconds */
+		s++; /* Skip '.' */
 		/* Now we're looking at tenths of seconds. If that
 		 * tenth is >= 5 (i.e., >= .5 of a second), then
 		 * increment to round to the nearest second.
 		 *
 		 * We have to skip the remaining digits for the next parser.
 		*/
-		sectotal += (*str++ - '0' >= 5) ? 1 : 0;
-		while (isdigit(*str)) {
-			str++;
+		*sectot += (*s++ - '0' >= 5) ? 1 : 0;
+		while (isdigit(*s)) {
+			s++;
 		}
 	}
-	*s = str;
-	return sectotal;
+	return s;
 }
 
-/* Parse 'YYYY-MM-DD HH:MM:SS(.S...) datetime format into epoch */
-static uint32_t
-parse_datetime(const char** const s)
+/* Parse 'YYYY-MM-DD HH:MM:SS(.S...) datetime format to seconds since epoch */
+static const char* restrict
+parse_datetime(const char* restrict s, uint32_t* restrict esecs)
 {
-	uint32_t epoch_delta; /* Seconds since epoch. */
 	{ /* Preconditions */
 		assert(s != NULL);
-		assert(*s != NULL);
 	}
 	{ /* Parse 'YYYY-MM-DD ' date format. */
 		unsigned int year = 0, month = 0, day = 0;
-		const char* str = *s;
-		year = (str[0] - '0') * 1000 + (str[1] - '0') * 100
-		    + (str[2] - '0') * 10 + (str[3] - '0');
-		month = (str[5] - '0') * 10 + (str[6] - '0'); /* skip '-' */
-		day = (str[8] - '0') * 10 + (str[9] - '0'); /* skip '-' */
-		*s = str + 11; /* Skip trailing space. */
-		epoch_delta = ejday(year, month, day);
+		year = (s[0] - '0') * 1000 + (s[1] - '0') * 100
+		    + (s[2] - '0') * 10 + (s[3] - '0');
+		month = (s[5] - '0') * 10 + (s[6] - '0'); /* skip '-' */
+		day = (s[8] - '0') * 10 + (s[9] - '0'); /* skip '-' */
+		s += 11; /* Skip trailing space. */
+		s = parse_timestamp(s, esecs);
+		*esecs += ejday(year, month, day);
 	}
-	return epoch_delta + parse_timestamp(s);
+	return s;
 }
 
 /* Parses a decimal value from a string */
-static uint64_t
-parse_uint(const char** const s)
+/* TODO: Find a way to write a generic version of this function */
+static const char* restrict
+parse_uint64(const char* restrict s, uint64_t* restrict val)
 {
-	uint64_t val = 0;
-	const char* str = *s;
 	{ /* Preconditions */
 		assert(s != NULL);
-		assert(*s != NULL);
 	}
-	while (isdigit(*str)) {
-		val = val * 10 + (unsigned int)(*str++ - '0');
+	while (isdigit(*s)) {
+		*val = (uint64_t)(*val * 10 + (unsigned int)(*s++ - '0'));
 	}
-	*s = str;
-	return val;
+	return s;
+}
+static const char* restrict
+parse_uint32(const char* restrict s, uint32_t* restrict val)
+{
+	{ /* Preconditions */
+		assert(s != NULL);
+	}
+	while (isdigit(*s)) {
+		*val = (uint32_t)(*val * 10 + (unsigned int)(*s++ - '0'));
+	}
+	return s;
+}
+static const char* restrict
+parse_uint16(const char* restrict s, uint16_t* restrict val)
+{
+	{ /* Preconditions */
+		assert(s != NULL);
+	}
+	while (isdigit(*s)) {
+		*val = (uint16_t)(*val * 10 + (unsigned int)(*s++ - '0'));
+	}
+	return s;
+}
+static const char* restrict
+parse_uint8(const char* restrict s, uint8_t* restrict val)
+{
+	{ /* Preconditions */
+		assert(s != NULL);
+	}
+	while (isdigit(*s)) {
+		*val = (uint8_t)(*val * 10 + (unsigned int)(*s++ - '0'));
+	}
+	return s;
+}
+
+/* Parses the duration field. */
+static const char* restrict
+parse_duration(const char* restrict s, uint16_t* restrict duration)
+{
+	{ /* Preconditions */
+		assert(s != NULL);
+	}
+	{ /* Parse the duration. 32 bit tmp value is purely for code re-use. */
+		s = parse_uint16(s, duration); /* DD */
+		while (!isdigit(*s)) { /* Skip ':', "Day", & "Days" trailers */
+			s++;
+		}
+		while(isdigit(*s)) { /* Skip 1 or 2 hours. */
+			s++;
+		}
+		/* The remaining string is ':MM:SS', which is always 0 secs */
+		/* So let's skip it. */
+		s += 6;
+	}
+	return s;
 }
 
 /* Convienence function for parse_range. Returns -2 on failure. */
 static int8_t
-range_to_byte(const unsigned int range)
+range_to_byte(const uint32_t range)
 {
 	switch(range) {
 	case 0:
@@ -107,29 +154,32 @@ range_to_byte(const unsigned int range)
 }
 
 /* Parses the range field (which can contain negative values) correctly. */
-static int8_t
-parse_range(const char** const s)
+static const char* restrict
+parse_range(const char* restrict s, int8_t* restrict range)
 {
+	uint32_t rangetmp = 0;
 	{ /* Preconditions */
 		assert(s != NULL);
-		assert(*s != NULL);
 	}
-	if (**s != '-') { /* Positive values can be handled as normal. */
-		return range_to_byte((unsigned int)parse_uint(s));
+	if (*s != '-') { /* Positive values can be handled as normal. */
+		s = parse_uint32(s, &rangetmp);
+		*range = range_to_byte(rangetmp);
+		return s;
 	}
 	/* The only possible negative value is -1, so just ignore the digits */
-	*s += 1;
-	while (isdigit(**s)) { /* Skip remaining digits for following funcs */
-		*s += 1;
+	s++;
+	while (isdigit(*s)) { /* Skip remaining digits for following funcs */
+		s++;
 	}
-	return -1;
+	*range = -1;
+	return s;
 }
 
 /* Parses an entire transaction record. */
 static struct eve_txn
-parse_raw_txn(const char* str)
+parse_raw_txn(const char* restrict str)
 {
-	struct eve_txn txn;
+	struct eve_txn txn = { 0 };
 	{ /* Preconditions */
 		assert(str != NULL);
 	}
@@ -142,36 +192,36 @@ parse_raw_txn(const char* str)
 	if (*str == '"') { /* Some formats contain a leading '"' */
 		str++;
 	}
-	txn.orderID = parse_uint(&str); str += SKIPLEN;
-	txn.regionID = (uint32_t)parse_uint(&str); str += SKIPLEN;
+	str = parse_uint64(str, &txn.orderID) + SKIPLEN;
+	str = parse_uint32(str, &txn.regionID) + SKIPLEN;
 	if (*str == '-') {
+		/* This regionID field has random -1 values, no idea why.
+		 * TODO: Investigate why.
+		*/
 		goto fail_bad_val;
 	}
-	txn.systemID = (uint32_t)parse_uint(&str); str += SKIPLEN;
-	txn.stationID = (uint32_t)parse_uint(&str); str += SKIPLEN;
-	txn.typeID = (uint32_t)parse_uint(&str); str += SKIPLEN;
-	txn.bid = (uint8_t)parse_uint(&str); str += SKIPLEN;
-	txn.price = parse_uint(&str) * 100;
+	str = parse_uint32(str, &txn.systemID) + SKIPLEN;
+	str = parse_uint32(str, &txn.stationID) + SKIPLEN;
+	str = parse_uint32(str, &txn.typeID) + SKIPLEN;
+	str = parse_uint8(str, &txn.bid) + SKIPLEN;
+	str = parse_uint64(str, &txn.price);
+	txn.price *= 100;
 	if (*str == '.') { /* Cents & cent field are optional */
 		str++;
-		txn.price += (uint32_t)(*str++ - '0') * 10;
+		txn.price += (uint64_t)(*str++ - '0') * 10;
 		if (isdigit(*str)) {
-			txn.price += (uint32_t)(*str++ - '0');
+			txn.price += (uint64_t)(*str++ - '0');
 		}
 	}
 	str += SKIPLEN;
-	txn.volMin = (uint32_t)parse_uint(&str); str += SKIPLEN;
-	txn.volRem = (uint32_t)parse_uint(&str); str += SKIPLEN;
-	txn.volEnt = (uint32_t)parse_uint(&str); str += SKIPLEN;
-	txn.issued = parse_datetime(&str); str += SKIPLEN;
-	txn.duration = (uint16_t)parse_uint(&str); /* Day(s) */
-	while (!isdigit(*str)) { /* handle ':', "Day", and "Days" trailers */
-		str++;
-	}
-	parse_timestamp(&str); str += SKIPLEN;
-	txn.range = parse_range(&str); str += SKIPLEN;
-	txn.reportedby = parse_uint(&str); str += SKIPLEN;
-	txn.rtime = parse_datetime(&str);
+	str = parse_uint32(str, &txn.volMin) + SKIPLEN;
+	str = parse_uint32(str, &txn.volRem) + SKIPLEN;
+	str = parse_uint32(str, &txn.volEnt) + SKIPLEN;
+	str = parse_datetime(str, &txn.issued) + SKIPLEN;
+	str = parse_duration(str, &txn.duration) + SKIPLEN;
+	str = parse_range(str, &txn.range) + SKIPLEN;
+	str = parse_uint64(str, &txn.reportedby) + SKIPLEN;
+	str = parse_datetime(str, &txn.rtime);
 	return txn;
 
 fail_bad_val:
@@ -204,7 +254,7 @@ pt_to_utc(const uint32_t pacificTime)
 
 /* Returns 0 if no badval, type of bad value otherwise. */
 static int
-has_bad_value(const struct eve_txn* const txn)
+has_bad_value(const struct eve_txn* const restrict txn)
 {
 	{ /* Preconditions */
 		assert(txn != NULL);
@@ -221,7 +271,7 @@ has_bad_value(const struct eve_txn* const txn)
 
 /* Check formats.txt for specifics of each format. */
 int
-parse_txn(const char *str, struct eve_txn *txn)
+parse_txn(char* const restrict str, struct eve_txn* restrict txn)
 {
 	{ /* Preconditions */
 		assert(str != NULL);
@@ -232,7 +282,7 @@ parse_txn(const char *str, struct eve_txn *txn)
 }
 
 int
-parse_txn_pt(const char *str, struct eve_txn *txn)
+parse_txn_pt(char* const restrict str, struct eve_txn* restrict txn)
 {
 	{ /* Preconditions */
 		assert(str != NULL);
@@ -245,7 +295,7 @@ parse_txn_pt(const char *str, struct eve_txn *txn)
 }
 
 int
-parse_txn_pt_bo(const char* const str, struct eve_txn* txn)
+parse_txn_pt_bo(char* const restrict str, struct eve_txn* restrict txn)
 {
 	{ /* Preconditions */
 		assert(str != NULL);
