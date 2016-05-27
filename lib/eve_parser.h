@@ -7,7 +7,7 @@
 #include <ctype.h>  /* isdigit() */
 #include "eve_txn.h" /* struct eve_txn */
 
-typedef int (*eve_txn_parser)(const char *str, struct eve_txn *rec);
+typedef int (*eve_txn_parser)(char* const restrict str, struct eve_txn* restrict rec);
 
 eve_txn_parser eve_txn_parser_strategy(uint32_t yr, uint32_t mn, uint32_t dy);
 

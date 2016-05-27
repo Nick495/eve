@@ -13,7 +13,7 @@
  * Convienence function which makes the eve_parser code look better.
 */
 static void
-parse_errhandler(const char *line, int outfd, const eve_txn_parser txn_parse)
+parse_errhandler(char* const restrict line, int outfd, const eve_txn_parser txn_parse)
 {
 	struct eve_txn txn;
 	switch(txn_parse(line, &txn)) {
