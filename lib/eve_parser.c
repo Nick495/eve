@@ -2,6 +2,14 @@
 
 #define HR_SECONDS 3600
 
+/*
+ * Note that this code parses 5 extremely similar machine-generated file
+ * formats in one cycle per byte on my 3-year-old rMBP, not counting IO.
+ * The code makes a lot of assumptions about those formats given its limited
+ * scope, and is probably not as general as it could be. There's next to no
+ * error handling, for example. Still, I can't think of a better way. Enjoy.
+*/
+
 /* Fast converter between years and Epoch normalized Julian Days, in seconds */
 static uint32_t
 ejday(unsigned int year, unsigned int month, unsigned int day)
@@ -21,14 +29,15 @@ parse_timestamp(const char** const s)
 	const char* str = *s;
 	{ /* Preconditions */
 		assert(s != NULL);
-		assert(*s != NULL);
+		assert(str != NULL);
 	}
 	/* Parse the HH:MM:SS(.S...) time format. */
 	sectotal = ((str[0] - '0') * 10 + (str[1] - '0')) * HR_SECONDS;
 	sectotal += ((str[3]-'0')*10 + (str[4]-'0')) * MIN_SECONDS;/*skip ':'*/
 	sectotal += (str[6] - '0') * 10 + (str[7] - '0'); /* skip ':' again */
-	if (str[8] == '.') { /* Handle optional trailing seconds */
-		str += 9; /* Skip '.' */
+	str += 8;
+	if (*str == '.') { /* Handle optional trailing seconds */
+		str++; /* Skip '.' */
 		/* Now we're looking at tenths of seconds. If that
 		 * tenth is >= 5 (i.e., >= .5 of a second), then
 		 * increment to round to the nearest second.
@@ -76,7 +85,7 @@ parse_uint(const char** const s)
 		assert(s != NULL);
 		assert(*s != NULL);
 	}
-	while (isdigit(*str)) {
+	while (isdigit(*str)) { /* Parse value. */
 		val = val * 10 + (unsigned int)(*str++ - '0');
 	}
 	*s = str;
@@ -125,6 +134,36 @@ parse_range(const char** const s)
 	return -1;
 }
 
+/* Parse duration (DD(:|day(s) )H:MM:SS(.S...) time format into numb of days */
+static uint16_t
+parse_duration(const char** const s)
+{
+	uint16_t duration;
+	const char* str = *s;
+	{ /* Preconditions */
+		assert(s != NULL);
+		assert(str != NULL);
+	}
+	{ /* Parse day(s) portion. */
+		duration = (uint16_t)parse_uint(s); /* Day(s) */
+		str = *s;
+		while (!isdigit(*str)) { /* handle ':' & "Day(s) " trailers */
+			str++;
+		}
+	}
+	/* Parse the H:MM:SS(.S...) time format. */
+	str += 7; /* Number of characters in 'H:MM:SS', which isn't used. */
+	if (*str == '.') { /* Handle optional trailing seconds */
+		str++; /* Skip '.' */
+		/* See parse_timestamp for details on how we do this. */
+		while (isdigit(*str)) {
+			str++;
+		}
+	}
+	*s = str;
+	return duration;
+}
+
 /* Parses an entire transaction record. */
 static struct eve_txn
 parse_raw_txn(const char* str)
@@ -144,15 +183,16 @@ parse_raw_txn(const char* str)
 	}
 	txn.orderID = parse_uint(&str); str += SKIPLEN;
 	txn.regionID = (uint32_t)parse_uint(&str); str += SKIPLEN;
-	if (*str == '-') {
-		goto fail_bad_val;
+	if (*str == '-') { /* Error handle unexpected negative value. */
+		txn.bid = 20; /* Arbitrary 'exception' value. */
+		return txn;
 	}
 	txn.systemID = (uint32_t)parse_uint(&str); str += SKIPLEN;
 	txn.stationID = (uint32_t)parse_uint(&str); str += SKIPLEN;
 	txn.typeID = (uint32_t)parse_uint(&str); str += SKIPLEN;
 	txn.bid = (uint8_t)parse_uint(&str); str += SKIPLEN;
 	txn.price = parse_uint(&str) * 100;
-	if (*str == '.') { /* Cents & cent field are optional */
+	if (*str == '.') { /* cent fields are optional */
 		str++;
 		txn.price += (uint32_t)(*str++ - '0') * 10;
 		if (isdigit(*str)) {
@@ -164,18 +204,10 @@ parse_raw_txn(const char* str)
 	txn.volRem = (uint32_t)parse_uint(&str); str += SKIPLEN;
 	txn.volEnt = (uint32_t)parse_uint(&str); str += SKIPLEN;
 	txn.issued = parse_datetime(&str); str += SKIPLEN;
-	txn.duration = (uint16_t)parse_uint(&str); /* Day(s) */
-	while (!isdigit(*str)) { /* handle ':', "Day", and "Days" trailers */
-		str++;
-	}
-	parse_timestamp(&str); str += SKIPLEN;
+	txn.duration = parse_duration(&str); str += SKIPLEN;
 	txn.range = parse_range(&str); str += SKIPLEN;
 	txn.reportedby = parse_uint(&str); str += SKIPLEN;
 	txn.rtime = parse_datetime(&str);
-	return txn;
-
-fail_bad_val:
-	txn.bid = 20; /* Random value to cause failure. */
 	return txn;
 }
 
@@ -221,7 +253,7 @@ has_bad_value(const struct eve_txn* const txn)
 
 /* Check formats.txt for specifics of each format. */
 int
-parse_txn(const char *str, struct eve_txn *txn)
+parse_txn(const char* str, struct eve_txn *txn)
 {
 	{ /* Preconditions */
 		assert(str != NULL);
@@ -232,7 +264,7 @@ parse_txn(const char *str, struct eve_txn *txn)
 }
 
 int
-parse_txn_pt(const char *str, struct eve_txn *txn)
+parse_txn_pt(const char* str, struct eve_txn *txn)
 {
 	{ /* Preconditions */
 		assert(str != NULL);
@@ -264,7 +296,7 @@ parse_txn_pt_bo(const char* const str, struct eve_txn* txn)
 }
 
 eve_txn_parser
-eve_txn_parser_strategy(uint32_t year, uint32_t month, uint32_t day)
+init_eve_txn_parser(uint32_t year, uint32_t month, uint32_t day)
 {
 	#define D20070101 1167609600 /* Consult formats.txt for dates. */
 	#define D20071001 1191369600

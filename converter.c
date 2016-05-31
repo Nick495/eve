@@ -13,7 +13,7 @@
  * Convienence function which makes the eve_parser code look better.
 */
 static void
-parse_errhandler(const char *line, int outfd, const eve_txn_parser txn_parse)
+parse_errhandler(const char* line, int outfd, const eve_txn_parser txn_parse)
 {
 	struct eve_txn txn;
 	switch(txn_parse(line, &txn)) {
@@ -43,25 +43,25 @@ static int
 eve_parser(const int infd, const int outfd)
 {
 	FILE *fin = fdopen(infd, "r");
-	char datebuf[12];
+	char datestr[12];
 	eve_txn_parser parse_txn;
-
-	{ /* Parse file date. */
+	{ /* Parse file date. YYYY-MM-DD header format */
 		unsigned int year, mon, day;
-		/* Read in 'YYYY-MM-DD' datestring header. */
-		fgets(datebuf, 12, fin);
-		year = (datebuf[0] - '0') * 1000 + (datebuf[1] - '0') * 100
-			+ (datebuf[2] - '0') * 10 + (datebuf[3] - '0');
-		assert(year >= 2006 && year <= 2020);
-		mon = (datebuf[5] - '0') * 10 + (datebuf[6] - '0');
-		assert(mon >= 1 && mon <= 12);
-		day = (datebuf[8] - '0') * 10 + (datebuf[9] - '0');
-		assert(day >= 1 && day <= 31);
-		/* File format changes over time, so init it with the date. */
-		parse_txn = eve_txn_parser_strategy(year, mon, day);
+		fgets(datestr, 12, fin);
+		year = (datestr[0] - '0') * 1000 + (datestr[1] - '0') * 100
+			+ (datestr[2] - '0') * 10 + (datestr[3] - '0');
+		mon = (datestr[5] - '0') * 10 + (datestr[6] - '0');
+		day = (datestr[8] - '0') * 10 + (datestr[9] - '0');
+		if (year < 2006 || year > 2020 || mon < 1 || mon > 12
+		    || day < 1 || day > 31) {
+			printf("Bad date: year: %u month: %u day: %u\n",
+			    year, mon, day);
+			return 1;
+		}
+		parse_txn = init_eve_txn_parser(year, mon, day);
 	}
 	{ /* Parse transactions. */
-		char linebuf[500]; /* > max line length + 1. */
+		char linebuf[500];
 		fgets(linebuf, 500, fin); /* Get rid of header line. */
 		while (fgets(linebuf, 500, fin)) {
 			parse_errhandler(linebuf, outfd, parse_txn);
@@ -69,10 +69,10 @@ eve_parser(const int infd, const int outfd)
 	}
 	{ /* Error handling and reporting */
 		if (!feof(fin)) {
-			printf("Error reading: %s\n", datebuf);
+			printf("Error reading: %s\n", datestr);
 			return -1;
 		}
-		printf("Finished file: %s\n", datebuf);
+		printf("Finished file: %s\n", datestr);
 	}
 	return 0;
 }
