@@ -24,17 +24,18 @@ ejday(unsigned int year, unsigned int month, unsigned int day)
 static uint32_t
 parse_timestamp(const char** const s)
 {
-	#define MIN_SECONDS 60
+	#define MIN_SECS 60
 	unsigned int sectotal;
+	typedef unsigned int uint; /* Necessary to fit in 80 columns. */
 	const char* str = *s;
 	{ /* Preconditions */
 		assert(s != NULL);
 		assert(str != NULL);
 	}
 	/* Parse the HH:MM:SS(.S...) time format. */
-	sectotal = ((str[0] - '0') * 10 + (str[1] - '0')) * HR_SECONDS;
-	sectotal += ((str[3]-'0')*10 + (str[4]-'0')) * MIN_SECONDS;/*skip ':'*/
-	sectotal += (str[6] - '0') * 10 + (str[7] - '0'); /* skip ':' again */
+	sectotal = (uint)((str[0] - '0') * 10 + (str[1] - '0')) * HR_SECONDS;
+	sectotal+=(uint)((str[3]-'0')*10 +(str[4]-'0')) *MIN_SECS; /*skip ':'*/
+	sectotal += (uint)((str[6] - '0') * 10 + (str[7] - '0'));
 	str += 8;
 	if (*str == '.') { /* Handle optional trailing seconds */
 		str++; /* Skip '.' */
@@ -65,10 +66,10 @@ parse_datetime(const char** const s)
 	{ /* Parse 'YYYY-MM-DD ' date format. */
 		unsigned int year = 0, month = 0, day = 0;
 		const char* str = *s;
-		year = (str[0] - '0') * 1000 + (str[1] - '0') * 100
-		    + (str[2] - '0') * 10 + (str[3] - '0');
-		month = (str[5] - '0') * 10 + (str[6] - '0'); /* skip '-' */
-		day = (str[8] - '0') * 10 + (str[9] - '0'); /* skip '-' */
+		year = (unsigned int)((str[0] - '0') * 1000
+		    + (str[1] - '0') *100 +(str[2] - '0') *10 +(str[3] - '0'));
+		month = (unsigned int)((str[5] - '0') * 10 + (str[6] - '0'));
+		day = (unsigned int)((str[8] - '0') * 10 + (str[9] - '0'));
 		*s = str + 11; /* Skip trailing space. */
 		epoch_delta = ejday(year, month, day);
 	}
@@ -252,7 +253,7 @@ has_bad_value(const struct eve_txn* const txn)
 }
 
 /* Check formats.txt for specifics of each format. */
-int
+static int
 parse_txn(const char* str, struct eve_txn *txn)
 {
 	{ /* Preconditions */
@@ -263,7 +264,7 @@ parse_txn(const char* str, struct eve_txn *txn)
 	return has_bad_value(txn);
 }
 
-int
+static int
 parse_txn_pt(const char* str, struct eve_txn *txn)
 {
 	{ /* Preconditions */
@@ -276,7 +277,7 @@ parse_txn_pt(const char* str, struct eve_txn *txn)
 	return has_bad_value(txn);
 }
 
-int
+static int
 parse_txn_pt_bo(const char* const str, struct eve_txn* txn)
 {
 	{ /* Preconditions */

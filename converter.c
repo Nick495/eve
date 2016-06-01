@@ -48,10 +48,11 @@ eve_parser(const int infd, const int outfd)
 	{ /* Parse file date. YYYY-MM-DD header format */
 		unsigned int year, mon, day;
 		fgets(datestr, 12, fin);
-		year = (datestr[0] - '0') * 1000 + (datestr[1] - '0') * 100
-			+ (datestr[2] - '0') * 10 + (datestr[3] - '0');
-		mon = (datestr[5] - '0') * 10 + (datestr[6] - '0');
-		day = (datestr[8] - '0') * 10 + (datestr[9] - '0');
+		year = (unsigned int)((datestr[0] - '0') * 1000
+		    + (datestr[1] - '0') * 100 + (datestr[2] - '0') * 10
+		    + (datestr[3] - '0'));
+		mon = (unsigned int)((datestr[5] -'0')*10 + (datestr[6] -'0'));
+		day = (unsigned int)((datestr[8] -'0')*10 + (datestr[9] -'0'));
 		if (year < 2006 || year > 2020 || mon < 1 || mon > 12
 		    || day < 1 || day > 31) {
 			printf("Bad date: year: %u month: %u day: %u\n",
@@ -88,7 +89,7 @@ sample_output(int infd)
 	FILE* fout;
 	{ /* Init fout */
 		const char* const name = "./test_out";
-		if (!(fout = fopen(name, "ab"))) {
+		if (!(fout = fopen(name, "wb"))) {
 			printf("Failed to open %s with error: %s\n",
 				name, strerror(errno));
 			return 1;
@@ -124,7 +125,7 @@ sample_column_output(int infd)
 		for (rb = 0; rb < 15; ++rb) {
 			strcpy(buf, prefix);
 			strcat(buf, names[rb]);
-			fouts[rb] = fopen(buf, "ab");
+			fouts[rb] = fopen(buf, "wb");
 			if (!fouts[rb]) {
 				printf("Failed to open %s with error: %s\n",
 				    names[rb], strerror(errno));
